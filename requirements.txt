@@ -1,0 +1,12 @@
+streamlit>=1.50
+pandas>=2.2
+numpy>=1.26
+plotly>=5.20
+yfinance>=0.2.54
+scikit-learn>=1.4
+xgboost>=2.0
+requests>=2.31
+beautifulsoup4>=4.12
+openpyxl>=3.1          # 讀 TEJ Pro 匯出的 .xlsx
+# 選用：模型解釋頁的 SHAP 分析
+# shap>=0.45

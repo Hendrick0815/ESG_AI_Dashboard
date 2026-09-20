@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.env
+venv/
+.venv/
+.pytest_cache/
+
+# 本機自備資料不上傳
+data/raw/local/*
+!data/raw/local/.gitkeep
+
+# TEJ 評等：部署公開網站時需要一起上傳（學校授權允許才這樣做）
+# 若日後不想公開，把下面兩行的註解拿掉：
+# data/raw/tej/*
+# !data/raw/tej/.gitkeep
+
+# 暫存與輸出（回測存檔會一起上傳，網站才能一打開就有結果）
+data/processed/*.tmp
+outputs/*.csv
+outputs/cache/*.tmp
+
+# Streamlit cache / OS
+.streamlit/cache/
+.DS_Store
+Thumbs.db
+desktop.ini

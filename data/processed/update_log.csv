@@ -1,0 +1,3 @@
+﻿time,start,end,universe,prices_rows,prices_failed,valuation
+2026-09-20 21:03:00,2023-09-20,2026-09-20,core,36549,0,"{'dates_requested': 37, 'rows_downloaded': 37259}"
+2026-09-20 23:29:15,2022-09-01,2026-09-20,core,49250,0,"{'dates_requested': 13, 'rows_downloaded': 12736}"
