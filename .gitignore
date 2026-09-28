@@ -17,6 +17,9 @@ data/raw/local/*
 
 # 暫存與輸出（回測存檔會一起上傳，網站才能一打開就有結果）
 data/processed/*.tmp
+data/processed/auto_update.json
+data/processed/auto_update.log
+*.log
 outputs/*.csv
 outputs/cache/*.tmp
 

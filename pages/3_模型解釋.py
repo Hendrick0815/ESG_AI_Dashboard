@@ -7,7 +7,7 @@ from src.features import TECH_LABELS
 from src.metrics import fmt_num, fmt_pct
 from src.pipeline import rank_ic
 from src.ui import charts
-from src.ui.common import get_result, require_prices, setup_page, show_notes, sidebar_data, sidebar_strategy
+from src.ui.common import get_result, metric_cards, require_prices, setup_page, show_notes, sidebar_data, sidebar_strategy
 from src.utils import to_csv_bytes
 
 setup_page("模型解釋", "🧠")
@@ -24,18 +24,17 @@ show_notes([n for n in res.notes if "示範" in n])
 
 ic = rank_ic(res.evaluation)
 ev = res.evaluation.dropna(subset=["pred", "fwd_ret"])
-c = st.columns(4)
-c[0].metric("平均 Rank IC", fmt_num(ic["rank_ic"].mean(), 3) if not ic.empty else "-",
-            help="預測排名與實際報酬排名的相關係數。> 0 代表模型有排序能力；實務上 0.03～0.05 就算有用")
-c[1].metric("IC > 0 的比例", fmt_pct((ic["rank_ic"] > 0).mean()) if not ic.empty else "-")
+cards = [("平均 Rank IC", fmt_num(ic["rank_ic"].mean(), 3) if not ic.empty else "-",
+          "預測排名與實際報酬排名的相關；0.03～0.05 就算有用"),
+         ("IC > 0 的比例", fmt_pct((ic["rank_ic"] > 0).mean()) if not ic.empty else "-")]
 if not ev.empty:
     hits = []
     for _, g in ev.groupby("date"):
         top = g.nlargest(params.top_n, "pred")
         hits.append(top["fwd_ret"].mean() - g["fwd_ret"].mean())
-    c[2].metric(f"Top {params.top_n} 平均超額報酬（每期）", fmt_pct(np.mean(hits)),
-                help="模型挑出的前 N 檔，平均比全部股票多賺多少（未扣成本）")
-c[3].metric("可評估的調倉次數", f"{ic['date'].nunique() if not ic.empty else 0}")
+    cards.append((f"Top {params.top_n} 平均超額報酬（每期）", fmt_pct(np.mean(hits)), "前 N 檔比全部股票多賺多少（未扣成本）"))
+cards.append(("可評估的調倉次數", f"{ic['date'].nunique() if not ic.empty else 0}"))
+metric_cards(cards, min_width=190)
 
 a, b = st.columns(2)
 with a:
@@ -67,7 +66,8 @@ with st.expander("SHAP 分析（需安裝 shap，可能較慢）"):
 with st.expander("使用的特徵"):
     info = res.panel_info
     rows = [{"特徵": f, "名稱": TECH_LABELS.get(f, f), "類別": k, "AI 模型使用": "是"}
-            for k, fs in [("技術面", info["tech_features"]), ("估值／財務", info["fin_features"])] for f in fs]
+            for k, fs in [("技術面", info["tech_features"]), ("量能／產業／籌碼", info.get("extra_features", [])),
+                          ("估值／財務", info["fin_features"])] for f in fs]
     rows += [{"特徵": f, "名稱": TECH_LABELS.get(f, f), "類別": "ESG", "AI 模型使用": "否（選股時融合）"}
              for f in info["esg_features"]]
     st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")

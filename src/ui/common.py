@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Dict, Optional, Tuple
 
+import html
+
 import pandas as pd
 import streamlit as st
 
@@ -45,6 +47,32 @@ def _memory() -> dict:
     return {}
 
 
+def auto_update_prices(mode: str) -> None:
+    """打開網頁時：股價落後最近收盤日就自動補抓（和 TEJ 無關）。每個瀏覽階段只檢查一次。
+    公開網站（ESG_ALLOW_UPDATE=0）不會執行。"""
+    if mode != "real" or not config.ALLOW_DATA_UPDATE or st.session_state.get("_auto_checked"):
+        return
+    st.session_state["_auto_checked"] = True
+    try:
+        if not store.needs_price_update():
+            return
+    except Exception:
+        return
+    target = store.last_close_date()
+    with st.status(f"自動更新股價到 {target:%Y-%m-%d} 收盤（約 1 分鐘，不需要 TEJ）…", expanded=False) as box:
+        try:
+            out = store.auto_update(progress=box.write)
+        except Exception as e:
+            box.update(label=f"自動更新失敗，沿用舊資料：{e}", state="error")
+            return
+        last = out.get("last_price_date")
+        ok = last is not None and pd.Timestamp(last) >= target
+        box.update(label=(f"股價已更新到 {last}" if ok else
+                          f"股價目前到 {last}（{target:%Y-%m-%d} 可能是休市日，或 Yahoo 尚未提供，稍後會再試）"),
+                   state="complete")
+    clear_caches()
+
+
 def sidebar_data() -> Tuple[store.Dataset, str, Optional[str]]:
     with st.sidebar:
         st.header("⚙️ 設定")
@@ -56,6 +84,7 @@ def sidebar_data() -> Tuple[store.Dataset, str, Optional[str]]:
             sets = store.demo_sets()
             prev = _remember("demo_set", sets[0] if sets else None)
             demo_set = _keep("demo_set", st.selectbox("示範資料集", sets, index=sets.index(prev) if prev in sets else 0))
+    auto_update_prices(mode)
     ds = _load(mode, demo_set, data_stamp(mode, demo_set))
     return ds, mode, demo_set
 
@@ -77,6 +106,19 @@ def sidebar_strategy(ds: store.Dataset) -> Params:
         esg_w = _keep("esg_w", st.slider("AI+ESG 中 ESG 的比重", 0.0, 1.0, _remember("esg_w", config.DEFAULT_ESG_WEIGHT), 0.05,
                                          help="混合分數 =（1−比重）× AI 預測排名 ＋ 比重 × ESG 排名"))
         st.caption("每月最後一個交易日調倉；已扣交易成本（手續費 0.1425%、賣出證交稅 0.3%）")
+        st.subheader("選股條件與風險")
+        use_screen = _keep("use_screen", st.checkbox(
+            "只買「均線全上」且「產業趨勢向上」的股票", _remember("use_screen", True),
+            help="均線全上：收盤價站上 5/10/20/60 日均線，且月線、季線上揚。\n\n"
+                 "產業趨勢向上：同產業股票的等權指數在季線之上、且近 1 個月上漲。\n\n"
+                 "每天成交量至少 100 張的條件一律套用。合格股票不足 N 檔時，空下的名額放現金。"))
+        risk_on = _keep("risk_on", st.checkbox("依大盤波動調整持股比例", _remember("risk_on", True),
+                                               help="持股比例 = 回撤目標 ÷ 大盤近期年化波動（最多 100%），其餘放現金。"))
+        max_dd = config.MAX_DD_TARGET
+        if risk_on:
+            pct = _keep("max_dd_pct", st.slider("回撤目標（%）", 5, 30, _remember("max_dd_pct", int(config.MAX_DD_TARGET * 100)), 1,
+                                                help="越小越保守：持股比例越低、報酬也越低。這是設計目標，不是保證。"))
+            max_dd = pct / 100
         with st.expander("進階"):
             trees = _keep("trees", st.slider("樹的數量", 50, 500, _remember("trees", config.DEFAULT_N_ESTIMATORS), 50))
             static_esg = _keep("static_esg", st.checkbox(
@@ -88,7 +130,8 @@ def sidebar_strategy(ds: store.Dataset) -> Params:
             _keep("pool", picked)
     return Params(model_name=model, top_n=top_n, n_estimators=trees, esg_weight=esg_w,
                   weighting=weighting, static_esg=static_esg,
-                  tickers=tuple(sorted(picked)) or None)
+                  tickers=tuple(sorted(picked)) or None,
+                  use_screen=use_screen, risk_control=risk_on, max_dd=round(float(max_dd), 2))
 
 
 def get_result(mode: str, demo_set: Optional[str], params: Params) -> Optional[Result]:
@@ -145,6 +188,30 @@ def show_notes(notes) -> None:
         (st.warning if n.startswith("⚠️") else st.info)(n)
 
 
+def metric_cards(items, min_width: int = 170) -> None:
+    """取代 st.columns + st.metric：卡片會依視窗寬度自動換行，長文字也會折行，不會和標題重疊。
+    items：[(標題, 數值), ...] 或 [(標題, 數值, 小字說明), ...]"""
+    cards = []
+    for it in items:
+        label, value = it[0], it[1]
+        sub = it[2] if len(it) > 2 and it[2] else ""
+        cards.append(
+            f'<div class="esg-card"><div class="esg-card-label">{html.escape(str(label))}</div>'
+            f'<div class="esg-card-value">{html.escape(str(value))}</div>'
+            + (f'<div class="esg-card-sub">{html.escape(str(sub))}</div>' if sub else "") + "</div>")
+    st.markdown(
+        "<style>"
+        f".esg-cards{{display:grid;grid-template-columns:repeat(auto-fill,minmax({min_width}px,1fr));"
+        "gap:.6rem;margin:.25rem 0 1rem}}"
+        ".esg-card{border:1px solid rgba(128,128,128,.25);border-radius:.5rem;padding:.6rem .8rem;min-width:0}"
+        ".esg-card-label{font-size:.82rem;opacity:.72;line-height:1.3;overflow-wrap:anywhere}"
+        ".esg-card-value{font-size:1.35rem;font-weight:600;line-height:1.35;margin-top:.15rem;"
+        "overflow-wrap:anywhere;font-variant-numeric:tabular-nums}"
+        ".esg-card-sub{font-size:.75rem;opacity:.6;margin-top:.1rem;overflow-wrap:anywhere}"
+        "</style>"
+        f'<div class="esg-cards">{"".join(cards)}</div>', unsafe_allow_html=True)
+
+
 def holdings_table(df: pd.DataFrame, names: Dict[str, str], score_fmt: str = "{:.3f}") -> pd.DataFrame:
     out = pd.DataFrame({
         "代號": df["ticker"].values,
@@ -153,6 +220,20 @@ def holdings_table(df: pd.DataFrame, names: Dict[str, str], score_fmt: str = "{:
         "分數": [score_fmt.format(s) if pd.notna(s) else "-" for s in df["score"]],
     })
     return out
+
+
+SCORE_FMT = {"單純 ESG": "{:.1f}", "技術選股": "{:.2f}"}
+
+
+def holdings_block(sub: pd.DataFrame, names: Dict[str, str], strat: str, empty_text: str = "沒有符合條件的股票（全部現金）") -> None:
+    """一個策略的持股表；權重合計不到 100% 時註明現金比例。"""
+    if sub.empty:
+        st.info(empty_text)
+        return
+    st.dataframe(holdings_table(sub, names, SCORE_FMT.get(strat, "{:.3f}")), hide_index=True, width="stretch")
+    cash = 1 - float(sub["weight"].sum())
+    if cash > 0.005:
+        st.caption(f"合格股票只有 {len(sub)} 檔，其餘 {cash:.0%} 放現金（再依大盤波動調整持股比例）")
 
 
 def portfolio_labels(names: Dict[str, str]) -> Dict[str, str]:

@@ -142,6 +142,9 @@ class FakeStreamlit(types.ModuleType):
 
     cache_data = cache_resource = _cache
 
+    class column_config:   # noqa: N801
+        CheckboxColumn = staticmethod(lambda *a, **k: None)
+
 
 def fake_plotly():
     plotly = types.ModuleType("plotly")
@@ -165,7 +168,19 @@ def fake_plotly():
     return {"plotly": plotly, "plotly.graph_objects": go, "plotly.express": px}
 
 
+AUTO_CALLS = []
+
+
+def _no_network():
+    """冒煙測試不連網：自動更新改成假的（仍會走過「需要更新 → 顯示進度 → 清快取」整段流程）。"""
+    from src import store
+    store.needs_price_update = lambda now=None: True
+    store.auto_update = lambda progress=None, **k: (AUTO_CALLS.append(1), progress and progress("假更新"),
+                                                    {"last_price_date": "2000-01-01"})[-1]
+
+
 def run_page(path: str, overrides=None) -> FakeStreamlit:
+    _no_network()
     st = FakeStreamlit(overrides)
     for m in [m for m in sys.modules if m.startswith("src.ui")]:
         del sys.modules[m]
@@ -181,12 +196,16 @@ if __name__ == "__main__":
     demo = {"資料來源": "demo", "每次持有檔數（Top N）": 3, "樹的數量": 50}
     cases = [
         ("app.py", demo), ("pages/1_策略回測.py", demo), ("pages/2_個股分析.py", demo),
-        ("pages/3_模型解釋.py", demo),
+        ("pages/3_模型解釋.py", demo), ("pages/4_產業與籌碼.py", demo),
+        ("pages/1_策略回測.py", {**demo, "只買「均線全上」且「產業趨勢向上」的股票": False,
+                                "依大盤波動調整持股比例": False}),
         ("pages/1_策略回測.py", {**demo, "期間": "自訂"}),
         ("pages/1_策略回測.py", {**demo, "權重方式": "集中加權"}),
         ("pages/2_個股分析.py", {**demo, "K 線圖": True, "期間": "3 個月"}),
-        ("app.py", {"資料來源": "real"}),            # 沒有真實股價 → 應提示更新
+        ("app.py", {"資料來源": "real"}),            # 沒有真實股價 → 應提示更新；有的話跑完整流程
         ("pages/1_策略回測.py", {"資料來源": "real"}),
+        ("pages/4_產業與籌碼.py", {"資料來源": "real"}),
+        ("pages/4_產業與籌碼.py", {"資料來源": "real", "只顯示合格股票": False, "統計期間": 20}),
     ]
     failed = 0
     for path, ov in cases:
@@ -203,5 +222,8 @@ if __name__ == "__main__":
             import traceback
             traceback.print_exc()
             print(f"FAIL {path} {ov} → {e!r}")
+    if not AUTO_CALLS:
+        failed += 1
+        print("FAIL 真實資料模式沒有觸發自動更新股價")
     print("\n全部通過" if not failed else f"\n{failed} 個失敗")
     sys.exit(1 if failed else 0)

@@ -3,11 +3,11 @@ import pandas as pd
 import streamlit as st
 
 from src import config, store
-from src.backtest import STRATEGIES
+from src.backtest import STRATEGIES, STRATEGY_DESC
 from src.metrics import fmt_num, fmt_pct
 from src.ui import charts
-from src.ui.common import (clear_caches, get_result, holdings_table, portfolio_labels, require_prices,
-                           setup_page, show_notes, sidebar_data, sidebar_strategy)
+from src.ui.common import (clear_caches, get_result, holdings_block, metric_cards, portfolio_labels,
+                           require_prices, setup_page, show_notes, sidebar_data, sidebar_strategy)
 
 setup_page("首頁")
 ds, mode, demo_set = sidebar_data()
@@ -17,18 +17,26 @@ st.caption("AI 選股 × ESG 因子 × 台股大盤／ETF 比較｜左側選擇�
 
 # ------------------------------------------------------------------ 資料狀態
 with st.expander("📦 資料狀態與更新", expanded=ds.prices.empty):
-    c1, c2, c3, c4 = st.columns(4)
     p = ds.prices
-    c1.metric("股票數", f"{p['ticker'].nunique():,}" if not p.empty else "0")
-    c2.metric("價格期間", f"{p['date'].min():%Y-%m-%d} ～ {p['date'].max():%Y-%m-%d}" if not p.empty else "—")
-    c3.metric("ESG 資料", f"{ds.esg['ticker'].nunique():,} 檔 / {ds.esg['available_date'].nunique()} 期"
-              if not ds.esg.empty else "無")
-    c4.metric("比較基準", ", ".join(sorted(ds.benchmarks["ticker"].unique())) if not ds.benchmarks.empty else "無")
+    last_close = store.last_close_date()
+    latest_px = p["date"].max() if not p.empty else None
+    metric_cards([
+        ("股票數", f"{p['ticker'].nunique():,}" if not p.empty else "0"),
+        ("股價資料到", f"{latest_px:%Y-%m-%d}" if latest_px is not None else "—",
+         f"從 {p['date'].min():%Y-%m-%d} 開始｜最近收盤日 {last_close:%Y-%m-%d}" if latest_px is not None else ""),
+        ("ESG 資料", f"{ds.esg['ticker'].nunique():,} 檔 / {ds.esg['available_date'].nunique()} 期"
+         if not ds.esg.empty else "無"),
+        ("三大法人", f"到 {ds.flows['date'].max():%Y-%m-%d}" if not ds.flows.empty else "尚未抓取",
+         f"{ds.flows['date'].nunique()} 個交易日" if not ds.flows.empty else "py scripts/update_data.py --flows"),
+        ("比較基準", "、".join(sorted(ds.benchmarks["ticker"].unique())) if not ds.benchmarks.empty else "無"),
+    ])
     if not p.empty and "source" in p.columns:
         st.caption("價格來源：" + "、".join(f"{k} {v:,} 筆" for k, v in p["source"].value_counts().items()))
 
     if mode == "real" and config.ALLOW_DATA_UPDATE:
-        st.markdown("**從網路更新**（只補抓缺少的日期；也可以在終端機執行 `python scripts/update_data.py`）")
+        st.markdown("**自動更新**：每次打開網頁，股價若落後最近收盤日會自動補抓（和 TEJ 無關）。"
+                    "想在不開網頁時也自動更新，雙擊 `scripts/install_schedule.bat` 建立平日 14:45 的排程。")
+        st.markdown("**手動更新／換股票池**（只補抓缺少的日期；也可以在終端機執行 `py scripts/update_data.py`）")
         u1, u2, u3 = st.columns([1, 1, 1])
         universe = u1.selectbox("股票池", ["core", "tej"], format_func={
             "core": "市值前 50 大（約 1 分鐘）", "tej": "所有有 TEJ 評等的股票（約 1,900 檔，10 分鐘以上）"}.get)
@@ -38,7 +46,7 @@ with st.expander("📦 資料狀態與更新", expanded=ds.prices.empty):
         years = u2.slider("回看年數", 1, 5, 3)
         do_val = u3.checkbox("一併抓本益比／淨值比／殖利率", value=True, help="每月一筆，約 3 秒一個月")
         if st.button("🔄 更新資料", type="primary"):
-            end = pd.Timestamp.today().normalize()
+            end = store.last_close_date()
             start = end - pd.DateOffset(years=years)
             log = st.status("更新中…", expanded=True)
             try:
@@ -89,32 +97,35 @@ show_notes([n for n in res.notes if n not in ds.notes])
 
 st.subheader(f"🗓️ 最新選股（{res.latest_date:%Y-%m-%d} 收盤後）")
 st.caption(f"樣本外回測期間：{res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}｜每月調倉｜"
-           f"{params.weighting}｜Top {params.top_n}｜模型 {params.model_name}")
+           f"{params.weighting}｜Top {params.top_n}｜模型 {params.model_name}｜"
+           f"{'均線全上＋產業向上' if params.use_screen else '不限技術面'}｜每天 ≥ 100 張｜"
+           f"{f'依大盤波動控管（回撤目標 {params.max_dd:.0%}）' if params.risk_control else '永遠滿倉'}")
 
 perf = res.perf.set_index("portfolio")
-cols = st.columns(4)
-if "AI+ESG" in perf.index:
-    cols[0].metric("AI+ESG 年化報酬", fmt_pct(perf.loc["AI+ESG", "ann_return"]))
-    cols[1].metric("AI+ESG Sharpe", fmt_num(perf.loc["AI+ESG", "sharpe"]))
-    cols[2].metric("AI+ESG 最大回撤", fmt_pct(perf.loc["AI+ESG", "max_drawdown"]))
+cards = []
+for strat in STRATEGIES:
+    if strat in perf.index:
+        cards.append((f"{strat}", fmt_pct(perf.loc[strat, "ann_return"]),
+                      f"年化報酬｜最大回撤 {fmt_pct(perf.loc[strat, 'max_drawdown'])}｜Sharpe {fmt_num(perf.loc[strat, 'sharpe'])}"))
 bench_key = next((b for b in config.BENCHMARKS if b in perf.index), None)
 if bench_key:
-    cols[3].metric(f"{labels.get(bench_key, bench_key)} 年化報酬", fmt_pct(perf.loc[bench_key, "ann_return"]))
+    cards.append((labels.get(bench_key, bench_key), fmt_pct(perf.loc[bench_key, "ann_return"]),
+                  f"年化報酬｜最大回撤 {fmt_pct(perf.loc[bench_key, 'max_drawdown'])}"))
+if params.risk_control and not res.risk_log.empty:
+    expo = res.risk_log[res.risk_log["date"] == res.risk_log["date"].max()]["exposure"].max()
+    cards.append(("目前建議持股比例", fmt_pct(expo), f"依大盤波動｜回撤目標 {params.max_dd:.0%}"))
+metric_cards(cards, min_width=200)
 
-pick_cols = st.columns(3)
-desc = {"AI+ESG": "AI 預測排名與 ESG 排名加權", "單純 AI": "只看 AI 預測，不用 ESG", "單純 ESG": "只看 ESG 總分"}
-for col, strat in zip(pick_cols, STRATEGIES):
-    with col:
-        st.markdown(f"**{strat}**　<span style='opacity:.7'>{desc[strat]}</span>", unsafe_allow_html=True)
-        sub = res.latest[res.latest["portfolio"] == strat]
-        if sub.empty:
-            st.info("沒有可用的選股")
-        else:
-            st.dataframe(holdings_table(sub, names, "{:.1f}" if strat == "單純 ESG" else "{:.3f}"),
-                         hide_index=True, width="stretch")
+for row in range(0, len(STRATEGIES), 2):
+    pick_cols = st.columns(2)
+    for col, strat in zip(pick_cols, STRATEGIES[row:row + 2]):
+        with col:
+            st.markdown(f"**{strat}**　<span style='opacity:.7'>{STRATEGY_DESC[strat]}</span>", unsafe_allow_html=True)
+            holdings_block(res.latest[res.latest["portfolio"] == strat], names, strat)
 
 st.plotly_chart(charts.nav_chart(res.returns, labels, "累積淨值（樣本外，扣除交易成本）"), width="stretch")
-st.caption("實線 = 策略；虛線 = 比較基準。詳細績效、歷次持股、市場情境請看「策略回測」頁。")
+st.caption("實線 = 策略；虛線 = 比較基準。詳細績效、持股比例、歷次持股請看「策略回測」頁；"
+           "產業趨勢、法人買賣超、每檔股票的條件檢查請看「產業與籌碼」頁。")
 
 st.divider()
 st.caption(

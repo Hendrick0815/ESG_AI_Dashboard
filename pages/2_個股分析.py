@@ -5,7 +5,7 @@ import streamlit as st
 
 from src.metrics import fmt_num, fmt_pct, performance, price_metrics
 from src.ui import charts
-from src.ui.common import label, setup_page, show_notes, sidebar_data
+from src.ui.common import metric_cards, label, setup_page, show_notes, sidebar_data
 from src.utils import normalize_ticker
 
 setup_page("個股分析", "🔍")
@@ -76,16 +76,14 @@ st.caption(f"資料期間：{d['date'].min():%Y-%m-%d} ～ {d['date'].max():%Y-%
 if ds.mode == "demo":
     show_notes(ds.notes)
 
-c = st.columns(5)
-c[0].metric("累積報酬", fmt_pct(m["cum_return"]))
-c[1].metric("年化波動", fmt_pct(m["ann_vol"]))
-c[2].metric("Sharpe", fmt_num(m["sharpe"]))
-c[3].metric("最大回撤", fmt_pct(m["max_drawdown"]))
 if esg_row is not None and pd.notna(esg_row.get("esg_total")):
     grade = esg_row.get("esg_grade")
-    c[4].metric("ESG 評等", f"{grade if isinstance(grade, str) else ''} {esg_row['esg_total']:.1f}".strip())
+    esg_text = f"{grade if isinstance(grade, str) else ''} {esg_row['esg_total']:.1f}".strip()
 else:
-    c[4].metric("ESG 評等", "無資料")
+    esg_text = "無資料"
+metric_cards([("累積報酬", fmt_pct(m["cum_return"])), ("年化波動", fmt_pct(m["ann_vol"])),
+              ("Sharpe", fmt_num(m["sharpe"])), ("最大回撤", fmt_pct(m["max_drawdown"])), ("ESG 評等", esg_text)],
+             min_width=140)
 
 tab1, tab2, tab3, tab4 = st.tabs(["走勢", "風險與技術指標", "ESG", "同業比較"])
 

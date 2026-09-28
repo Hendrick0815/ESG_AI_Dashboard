@@ -5,7 +5,7 @@
 
 ---
 
-## 一、先在本機準備好資料（10 分鐘）
+## 一、先在本機準備好資料（10 分鐘；加三大法人約 40 分鐘）
 
 網站上不會自己抓資料（雲端主機會被證交所和 Yahoo 擋），所以要先在自己電腦準備好，
 連同程式一起上傳。
@@ -15,6 +15,9 @@ cd C:\Users\hendr\OneDrive\Desktop\esg-dashboard
 
 # 1. 抓最新股價（公開網站建議用 50 檔，檔案小、跑得快）
 py scripts/update_data.py --universe core --start 2022-09-01
+
+# 1b.（建議）回補三大法人買賣超，第一次約 40 分鐘，可中斷續抓
+py scripts/update_data.py --flows
 
 # 2. 先把預設設定的回測算好存檔，網站一打開就有結果，不用等
 py scripts/run_backtest.py
@@ -84,9 +87,42 @@ py scripts/run_backtest.py           # 重算並存檔
 
 TEJ 有新一期 TESG 時，把匯出的檔案丟進 `data/raw/tej/`，一樣重跑上面兩行再 push。
 
+**想讓網站每天自動更新**：先照 README 雙擊 `scripts/install_schedule.bat` 建立排程，再用記事本打開
+`scripts/update_daily.bat`，把 `set PUSH_TO_GITHUB=0` 改成 `set PUSH_TO_GITHUB=1`。
+之後平日 14:45 會自動：抓最新收盤價 → 重算回測 → commit → push，網站一兩分鐘後就是新資料。
+（需要電腦開機，而且這台電腦的 git 已經可以 push 到你的 GitHub。）
+
+> 程式改版後（例如這次加了選股條件與風險控制），舊的回測存檔會自動失效。
+> push 之前記得先跑一次 `py scripts/run_backtest.py`，網站打開才不用重算。
+
 ---
 
-## 五、幾個要知道的事
+## 五、程式碼一改，網站就自動更新（建議開啟）
+
+Claude 改程式時是直接寫進你電腦的 `esg-dashboard` 資料夾；只要有一個小程式在你電腦上幫忙 push，網站就會跟著更新：
+
+```
+Claude 改檔案 → 你電腦上的 auto_push 偵測到變動 → 跑測試 → 通過才 commit + push → Streamlit Cloud 自動重新部署
+```
+
+**開啟方式（二選一）**
+- 雙擊 `scripts/install_auto_push.bat`：之後每次登入 Windows 都會在背景自動執行，不會有視窗。**推薦。**
+- 雙擊 `scripts/start_auto_push.bat`：開一個視窗監看，關掉視窗就停止。
+
+**它會做什麼**
+- 檔案變動後等 60 秒沒有新變動才發佈（避免推出改到一半的版本）。
+- 有改到程式（.py）會先跑 `tests/test_core.py` 和 `tests/smoke_ui.py`，**任何一個沒過就不推**，網站維持舊版。
+- 只改資料（例如每天的股價）不跑測試，直接推，所以和每日排程搭配就是「股價每天自動上網站」。
+- 紀錄在 `data/processed/auto_push.log`，推不上去或測試失敗的原因都寫在這裡。
+
+**需要的條件**：電腦開機、這台電腦的 git 能 push 到你的 GitHub（用 GitHub Desktop publish 過就可以）。
+取消：按 Win+R 輸入 `shell:startup`，刪掉 `ESG-AI-auto-push.bat`，再到工作管理員結束 `pythonw`。
+
+> 開了自動發佈之後，`update_daily.bat` 裡的 `PUSH_TO_GITHUB` 維持 0 即可，不用重複設定。
+
+---
+
+## 六、幾個要知道的事
 
 | 事項 | 說明 |
 |---|---|

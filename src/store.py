@@ -7,8 +7,10 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -72,8 +74,8 @@ def plan_fetch(existing: Optional[pd.DataFrame], tickers: List[str], start, end,
         s = span.get(t)
         if s is None or s["min"] > start + pd.Timedelta(days=overlap_days):
             fetch_from = start                     # 沒有資料，或歷史不夠長 → 從頭抓
-        elif s["max"] >= end - pd.Timedelta(days=1):
-            continue                               # 已是最新
+        elif s["max"] >= end:
+            continue                               # 已是最新（舊版用 end - 1 天，連續兩天更新時會漏抓最新一天）
         else:
             fetch_from = s["max"] - pd.Timedelta(days=overlap_days)
         # 同一週開始的合併成一批，減少請求次數
@@ -169,6 +171,133 @@ def update_valuation(start=None, progress=None) -> Dict:
     return {"dates_requested": len(todo), "rows_downloaded": 0 if new is None else len(new)}
 
 
+def update_institutional(start=None, max_days: Optional[int] = None, progress=None) -> Dict:
+    """三大法人買賣超（證交所 T86，僅上市）。依股價檔裡的交易日補抓缺少的日子，每 20 天存一次檔。
+    max_days：最多抓最近幾天（自動更新用，避免第一次就花半小時回補）。"""
+    from .crawlers import twse
+    prices = _read(config.PRICES_FILE)
+    if prices is None or prices.empty:
+        return {"error": "請先更新股價（交易日依股價資料決定）"}
+    days = sorted(pd.to_datetime(prices["date"].unique()))
+    days = [pd.Timestamp(d) for d in days if pd.Timestamp(d).dayofweek < 5]
+    if start is not None:
+        days = [d for d in days if d >= pd.Timestamp(start)]
+    existing = _read(config.INSTITUTIONAL_FILE)
+    have = set(existing["date"]) if existing is not None else set()
+    todo = [d for d in days if d not in have]
+    if max_days is not None:
+        todo = todo[-max_days:]
+    state = {"frame": existing}
+
+    def save(chunk: pd.DataFrame) -> None:
+        merged = pd.concat([x for x in [state["frame"], chunk] if x is not None], ignore_index=True)
+        merged = merged.drop_duplicates(["date", "ticker"], keep="last").sort_values(["date", "ticker"])
+        write_csv(merged, config.INSTITUTIONAL_FILE)
+        state["frame"] = merged
+
+    new = twse.fetch_t86_series(todo, progress=progress, on_chunk=save) if todo else None
+    return {"dates_requested": len(todo), "rows_downloaded": 0 if new is None else len(new)}
+
+
+# ------------------------------------------------------------------ 自動更新（不需要 TEJ）
+TW_TZ = timezone(timedelta(hours=8))   # 台灣沒有日光節約時間，用固定 +8 就好（Windows 不必另裝 tzdata）
+CLOSE_READY = (14, 30)                 # 13:30 收盤，Yahoo 約 14:00 後才有完整日 K，保守抓 14:30
+AUTO_STATE_FILE = config.PROCESSED_DIR / "auto_update.json"
+AUTO_RETRY_MINUTES = 30                # 同一個收盤日，半小時內不重複嘗試（例如遇到颱風假沒有新資料）
+
+
+def last_close_date(now: Optional[datetime] = None) -> pd.Timestamp:
+    """最近一個「已經收盤、資料應該出來」的交易日（不含國定假日判斷：假日時 Yahoo 就不會有新資料）。"""
+    now = now.astimezone(TW_TZ) if now else datetime.now(TW_TZ)
+    d = pd.Timestamp(now.date())
+    if (now.hour, now.minute) < CLOSE_READY:
+        d -= pd.Timedelta(days=1)
+    while d.dayofweek >= 5:
+        d -= pd.Timedelta(days=1)
+    return d
+
+
+def prices_last_date() -> Optional[pd.Timestamp]:
+    if not config.PRICES_FILE.exists():
+        return None
+    try:
+        dates = pd.read_csv(config.PRICES_FILE, usecols=["date"])["date"]
+        return pd.to_datetime(dates).max().normalize()
+    except Exception:
+        return None
+
+
+def prices_first_date() -> Optional[pd.Timestamp]:
+    if not config.PRICES_FILE.exists():
+        return None
+    try:
+        return pd.to_datetime(pd.read_csv(config.PRICES_FILE, usecols=["date"])["date"]).min().normalize()
+    except Exception:
+        return None
+
+
+def _auto_state() -> Dict:
+    try:
+        return json.loads(AUTO_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def needs_price_update(now: Optional[datetime] = None) -> bool:
+    """股價落後最近收盤日、而且最近半小時沒試過 → 需要更新。"""
+    target = last_close_date(now)
+    last = prices_last_date()
+    if last is None or last >= target:
+        return False
+    st = _auto_state()
+    if st.get("target") == str(target.date()):
+        tried = pd.Timestamp(st.get("tried_at"))
+        now_ts = pd.Timestamp((now or datetime.now(TW_TZ)).astimezone(TW_TZ).replace(tzinfo=None))
+        if now_ts - tried < pd.Timedelta(minutes=AUTO_RETRY_MINUTES):
+            return False
+    return True
+
+
+def auto_update(progress=None, flows_days: int = 10, now: Optional[datetime] = None) -> Dict:
+    """補到最近收盤日：股價（沿用現有股票池）、比較基準、最近幾天的三大法人、缺少的月底估值。
+    和 TEJ 完全無關：ESG 檔沒更新也照樣更新股價。任何一步失敗都不影響其他步驟。"""
+    target = last_close_date(now)
+    AUTO_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    AUTO_STATE_FILE.write_text(json.dumps({"target": str(target.date()),
+                                           "tried_at": str(pd.Timestamp(datetime.now(TW_TZ).replace(tzinfo=None)))}),
+                               encoding="utf-8")
+    existing = _read(config.PRICES_FILE)
+    tickers = sorted(existing["ticker"].unique()) if existing is not None else list(config.CORE_UNIVERSE)
+    start = (existing["date"].min() if existing is not None else target - pd.DateOffset(years=3))
+    out: Dict = {"target": str(target.date())}
+    report = (lambda msg: progress(msg)) if progress else (lambda msg: None)
+    try:
+        report(f"股價：{len(tickers)} 檔補到 {target.date()}")
+        r = update_prices(tickers, start, target)
+        out["prices"] = {"rows": r["rows_downloaded"], "failed": len(r["failed"])}
+    except Exception as e:
+        out["prices"] = {"error": str(e)}
+    try:
+        report("比較基準（加權指數、ETF）")
+        b = update_benchmarks(start, target)
+        out["benchmarks"] = {"rows": b["rows_downloaded"]}
+    except Exception as e:
+        out["benchmarks"] = {"error": str(e)}
+    try:
+        report("三大法人買賣超（最近幾天）")
+        out["institutional"] = update_institutional(max_days=flows_days)
+    except Exception as e:
+        out["institutional"] = {"error": str(e)}
+    try:
+        report("本益比／淨值比／殖利率（月底）")
+        out["valuation"] = update_valuation(target - pd.DateOffset(months=2))
+    except Exception as e:
+        out["valuation"] = {"error": str(e)}
+    out["last_price_date"] = str(prices_last_date().date()) if prices_last_date() is not None else None
+    append_update_log({"type": "auto", **{k: v for k, v in out.items()}})
+    return out
+
+
 def append_update_log(record: Dict) -> None:
     row = pd.DataFrame([{"time": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
                          **{k: str(v) for k, v in record.items()}}])
@@ -204,6 +333,7 @@ class Dataset:
     financials: pd.DataFrame                # ticker,available_date,pe,pb,dividend_yield,roe,...
     listing: pd.DataFrame                   # ticker,code,name,market,industry
     notes: List[str] = field(default_factory=list)
+    flows: pd.DataFrame = field(default_factory=pd.DataFrame)   # date,ticker,foreign_net,trust_net,dealer_net,total_net
 
     @property
     def names(self) -> Dict[str, str]:
@@ -281,6 +411,9 @@ def load_dataset(mode: str = "real", demo_set: Optional[str] = None) -> Dataset:
     if len(fin_parts) == 2:   # 兩個來源同欄位時各自保留，as-of 合併時每欄各取最新值
         fin = fin.groupby(["ticker", "available_date"], as_index=False).last()
 
+    flows = _read(config.INSTITUTIONAL_FILE)
+    flows = flows if flows is not None else pd.DataFrame()
+
     if prices.empty:
         notes.append("尚未有真實股價資料：請執行 `python scripts/update_data.py` 或按首頁的「更新資料」。")
-    return Dataset("real", prices, bench, esg, fin, listing, notes)
+    return Dataset("real", prices, bench, esg, fin, listing, notes, flows)

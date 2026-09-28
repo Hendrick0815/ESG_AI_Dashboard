@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from ..backtest import STRATEGIES
 
 # 三個策略用分類色第 1–3 格；比較基準一律灰階＋虛線（以線型區分，不佔用彩色）
-STRATEGY_COLORS = {"AI+ESG": "#2a78d6", "單純 AI": "#eb6834", "單純 ESG": "#1baf7a"}
+STRATEGY_COLORS = {"AI+ESG": "#2a78d6", "單純 AI": "#eb6834", "單純 ESG": "#1baf7a", "技術選股": "#eda100"}
 BENCH_GRAYS = ["#52514e", "#8a8984", "#6f6e69", "#a3a29c", "#3f3e3b"]
 SERIES_PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
 UP, DOWN = "#e34948", "#008300"   # 台股：紅漲綠跌
@@ -18,10 +18,15 @@ GRID = "rgba(128,128,128,0.18)"
 
 
 def _layout(fig: go.Figure, title: str = "", height: int = 420, y_title: str = "", pct_y: bool = False) -> go.Figure:
+    # 圖例放在圖的「下方」：放上方時，圖例一換行就會蓋到標題（視窗窄、線條多時最明顯）。
+    # 下方空間由 Plotly 自動撐開（margin.autoexpand），幾行圖例都不會重疊。
     fig.update_layout(
-        title=dict(text=title, x=0, font=dict(size=15)), height=height, template="plotly_white",
-        margin=dict(l=10, r=10, t=50 if title else 20, b=10), hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, title=None),
+        title=dict(text=title, x=0, xanchor="left", y=1, yanchor="top", yref="container",
+                   pad=dict(t=12, l=4), font=dict(size=15)),
+        height=height, template="plotly_white",
+        margin=dict(l=10, r=10, t=48 if title else 16, b=10, autoexpand=True), hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="left", x=0, title=None,
+                    font=dict(size=12)),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     )
     fig.update_xaxes(showgrid=False, title=None)
@@ -105,7 +110,7 @@ def price_chart(df: pd.DataFrame, candle: bool, title: str) -> go.Figure:
     fig.add_trace(go.Scatter(x=df["date"], y=df["sma60"], name="季線 SMA60", line=dict(color=SERIES_PALETTE[6], width=1.5)))
     fig = _layout(fig, title, height=480, y_title="價格")
     fig.update_layout(xaxis_rangeslider_visible=False, dragmode="zoom")
-    fig.update_xaxes(rangeselector=dict(buttons=[
+    fig.update_xaxes(rangeselector=dict(x=1, xanchor="right", y=1.02, yanchor="bottom", buttons=[
         dict(count=1, label="1 月", step="month", stepmode="backward"),
         dict(count=3, label="3 月", step="month", stepmode="backward"),
         dict(count=6, label="半年", step="month", stepmode="backward"),
@@ -168,6 +173,31 @@ def scatter_peers(df: pd.DataFrame, x: str, y: str, label: str, highlight: str, 
     return fig
 
 
+def exposure_chart(risk_log: pd.DataFrame) -> go.Figure:
+    """每天的持股比例（1 = 全部買股票；其餘為現金）。"""
+    fig = go.Figure()
+    for p in [s for s in STRATEGIES if s in set(risk_log["portfolio"])]:
+        g = risk_log[risk_log["portfolio"] == p].sort_values("date")
+        fig.add_trace(go.Scatter(x=g["date"], y=g["exposure"], mode="lines", name=p, line_shape="hv",
+                                 line=dict(color=STRATEGY_COLORS.get(p, "#888"), width=1.8),
+                                 hovertemplate="%{y:.0%}"))
+    fig = _layout(fig, "每日持股比例（其餘為現金）", height=300, pct_y=True)
+    fig.update_yaxes(range=[0, 1.05])
+    return fig
+
+
+def industry_bar(df: pd.DataFrame, x: str, y: str, title: str, pct: bool = True, height: int = 460) -> go.Figure:
+    """正值紅、負值綠（台股習慣）。"""
+    d = df.sort_values(x)
+    fig = go.Figure(go.Bar(x=d[x], y=d[y], orientation="h",
+                           marker=dict(color=[UP if v >= 0 else DOWN for v in d[x]]),
+                           hovertemplate="%{y}：%{x:.1%}<extra></extra>" if pct else "%{y}：%{x:,.1f}<extra></extra>"))
+    fig = _layout(fig, title, height=height)
+    fig.update_layout(showlegend=False, hovermode="closest")
+    fig.update_xaxes(showgrid=True, gridcolor=GRID, tickformat=".0%" if pct else None)
+    return fig
+
+
 def rank_ic_chart(ic: pd.DataFrame) -> go.Figure:
     colors = [SERIES_PALETTE[0] if v >= 0 else SERIES_PALETTE[1] for v in ic["rank_ic"]]
     fig = go.Figure(go.Bar(x=ic["date"], y=ic["rank_ic"], marker=dict(color=colors),
@@ -178,5 +208,5 @@ def rank_ic_chart(ic: pd.DataFrame) -> go.Figure:
     return fig
 
 
-__all__ = ["nav_chart", "drawdown_chart", "risk_return_scatter", "price_chart", "line_chart", "histogram",
+__all__ = ["nav_chart", "drawdown_chart", "exposure_chart", "industry_bar", "risk_return_scatter", "price_chart", "line_chart", "histogram",
            "bar_h", "esg_radar", "scatter_peers", "rank_ic_chart", "STRATEGY_COLORS", "px"]

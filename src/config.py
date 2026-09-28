@@ -58,7 +58,7 @@ DEFAULT_TOP_N = 10
 DEFAULT_ESG_WEIGHT = 0.3        # AI+ESG 混合分數中 ESG 的比重
 DEFAULT_N_ESTIMATORS = 100
 RETRAIN_EVERY = 3               # 每 3 個月重新訓練一次模型（每月仍用最新模型選股）
-CACHE_DIR = OUTPUT_DIR / "cache"  # 回測結果存檔，重開網頁不用重算
+CACHE_DIR = Path(os.getenv("ESG_CACHE_DIR", OUTPUT_DIR / "cache"))  # 回測結果存檔，重開網頁不用重算
 HOLD_DAYS = 21                  # 每月調倉（每月最後一個交易日）；模型預測未來 21 個交易日的報酬
 MIN_TRAIN_DAYS = 250            # 至少一年訓練資料；資料不足時改用前 50%
 
@@ -68,3 +68,18 @@ CONVICTION_WEIGHTS = [0.30, 0.15, 0.10, 0.08, 0.06, 0.05, 0.04, 0.04, 0.03, 0.03
 
 # ESG 相關欄位（「單純 AI」一律不使用）
 ESG_COLS = ["esg_total", "e_score", "s_score", "g_score", "controversy_score", "carbon_intensity", "event_score"]
+
+# ---- 選股條件（技術面＋籌碼面）----
+MIN_DAILY_LOTS = 100            # 近 20 個交易日每天至少 100 張（排除成交量太小、容易被炒作的股票）
+RANGE_MAX_WIDTH = 0.25          # 區間整理：過去 40 天最高／最低不超過 25%
+BREAKOUT_BAND = 0.05            # 即將突破：收盤價距離區間高點 5% 以內
+BREAKOUT_MAX_ABOVE = 0.03       # 已經突破超過 3% 就不算「即將」突破（避免追高）
+VOLUME_RATIO_MIN = 1.1          # 稍微出量：5 日均量 / 20 日均量介於 1.1～2 倍
+VOLUME_RATIO_MAX = 2.0          # 超過 2 倍屬於爆量，常見於炒作或出貨，不算「稍微」
+
+# ---- 風險控制（目標：最大回撤 10% 以內）----
+MAX_DD_TARGET = 0.10            # 回撤目標；持股比例 = min(1, 此值 ÷ 大盤年化波動)
+MARKET_INDEX = "^TWII"          # 用加權指數的波動決定持股比例
+EXPOSURE_STEP = 0.1             # 持股比例以 10% 為單位調整，避免每天小幅進出付手續費
+
+INSTITUTIONAL_FILE = PROCESSED_DIR / "institutional.csv"   # 三大法人買賣超（證交所 T86）

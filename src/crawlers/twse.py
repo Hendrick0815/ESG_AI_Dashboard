@@ -3,6 +3,7 @@
 - 清單：https://isin.twse.com.tw/isin/C_public.jsp?strMode=2（上市）/ strMode=4（上櫃）
   用 CFICode = ESVUFR 只留普通股，排除 ETF、權證、特別股、TDR。
 - 估值：https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d（可查歷史任一交易日，僅上市）
+- 三大法人買賣超：https://www.twse.com.tw/rwd/zh/fund/T86（每日，僅上市）
 解析函式（parse_*）和抓取分開，方便用離線資料測試。
 """
 from __future__ import annotations
@@ -21,6 +22,8 @@ log = logging.getLogger(__name__)
 
 ISIN_URL = "https://isin.twse.com.tw/isin/C_public.jsp?strMode={mode}"
 BWIBBU_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d"
+T86_URL = "https://www.twse.com.tw/rwd/zh/fund/T86"
+FLOW_COLS = ["date", "ticker", "foreign_net", "trust_net", "dealer_net", "total_net"]
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                          "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
 COMMON_STOCK_CFI = "ESVUFR"
@@ -147,4 +150,71 @@ def fetch_valuation_series(dates: List[pd.Timestamp], sleep: float = 3.0, progre
             time.sleep(sleep + random.random())
     if not frames:
         return pd.DataFrame(columns=["date", "ticker", "pe", "pb", "dividend_yield"])
+    return pd.concat(frames, ignore_index=True)
+
+
+# ------------------------------------------------------------------ 三大法人買賣超（主力動向）
+def parse_t86(payload: dict, date: pd.Timestamp) -> pd.DataFrame:
+    """T86 回傳的 JSON → date, ticker, foreign_net, trust_net, dealer_net, total_net（單位：股）。
+    外資 = 外陸資（不含外資自營商）＋外資自營商；欄位依名稱辨識。"""
+    if not payload or payload.get("stat") != "OK" or not payload.get("data"):
+        return pd.DataFrame(columns=FLOW_COLS)
+    fields = [str(f) for f in payload["fields"]]
+    df = pd.DataFrame(payload["data"], columns=fields)
+
+    def num(pred):
+        cols = [f for f in fields if pred(f)]
+        return to_number(df[cols[0]]).fillna(0) if cols else pd.Series(0.0, index=df.index)
+
+    foreign = num(lambda f: "外陸資買賣超" in f) + num(lambda f: "外資自營商買賣超" in f)
+    trust = num(lambda f: "投信買賣超" in f)
+    dealer = num(lambda f: f.startswith("自營商買賣超") and "(" not in f)
+    total_cols = [f for f in fields if "三大法人買賣超" in f]
+    total = to_number(df[total_cols[0]]) if total_cols else foreign + trust + dealer
+    code_c = next(f for f in fields if "代號" in f)
+    out = pd.DataFrame({
+        "date": pd.Timestamp(date).normalize(),
+        "code": df[code_c].astype(str).str.strip(),
+        "foreign_net": foreign, "trust_net": trust, "dealer_net": dealer, "total_net": total,
+    })
+    out = out[out["code"].str.fullmatch(r"\d{4}")]
+    out["ticker"] = out["code"] + ".TW"
+    return out[FLOW_COLS].reset_index(drop=True)
+
+
+def fetch_t86(date: pd.Timestamp) -> pd.DataFrame:
+    params = {"date": pd.Timestamp(date).strftime("%Y%m%d"), "selectType": "ALLBUT0999", "response": "json"}
+    r = _get(T86_URL, params=params)
+    try:
+        payload = r.json()
+    except ValueError:
+        return parse_t86({}, date)
+    return parse_t86(payload, date)
+
+
+def fetch_t86_series(dates: List[pd.Timestamp], sleep: float = 3.0, progress=None, on_chunk=None,
+                     chunk: int = 20) -> pd.DataFrame:
+    """依序抓多個交易日。on_chunk(df)：每抓 chunk 天就呼叫一次（用來邊抓邊存檔，中斷也不會白抓）。"""
+    frames, pending = [], []
+    for i, d in enumerate(dates, 1):
+        try:
+            df = fetch_t86(d)
+            if not df.empty:
+                frames.append(df)
+                pending.append(df)
+        except PermissionError:
+            if on_chunk and pending:
+                on_chunk(pd.concat(pending, ignore_index=True))
+            raise
+        except Exception as e:
+            log.warning("%s 法人資料抓取失敗：%s", pd.Timestamp(d).date(), e)
+        if progress:
+            progress(i, len(dates), pd.Timestamp(d))
+        if on_chunk and pending and (i % chunk == 0 or i == len(dates)):
+            on_chunk(pd.concat(pending, ignore_index=True))
+            pending = []
+        if i < len(dates):
+            time.sleep(sleep + random.random())
+    if not frames:
+        return pd.DataFrame(columns=FLOW_COLS)
     return pd.concat(frames, ignore_index=True)
