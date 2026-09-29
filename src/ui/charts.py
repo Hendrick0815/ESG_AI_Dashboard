@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from ..backtest import STRATEGIES
 
 # 三個策略用分類色第 1–3 格；比較基準一律灰階＋虛線（以線型區分，不佔用彩色）
-STRATEGY_COLORS = {"AI+ESG": "#2a78d6", "單純 AI": "#eb6834", "單純 ESG": "#1baf7a", "技術選股": "#eda100"}
+STRATEGY_COLORS = {"AI+ESG": "#2a78d6", "單純 AI": "#eb6834", "單純 ESG": "#1baf7a"}
 BENCH_GRAYS = ["#52514e", "#8a8984", "#6f6e69", "#a3a29c", "#3f3e3b"]
 SERIES_PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
 UP, DOWN = "#e34948", "#008300"   # 台股：紅漲綠跌

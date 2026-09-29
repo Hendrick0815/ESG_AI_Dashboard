@@ -1,0 +1,49 @@
+# 每天自動抓最新股價並更新網站（在 GitHub 的主機上執行，你的電腦不用開機）
+# 時間：週一到週五 台灣時間 14:50（UTC 06:50）。也可以在 GitHub 網頁的 Actions 分頁按「Run workflow」手動執行。
+name: 每日更新股價
+
+on:
+  schedule:
+    - cron: "50 6 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write          # 允許把更新後的資料 commit 回這個 repo
+
+concurrency:
+  group: daily-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 安裝套件
+        run: pip install -r requirements.txt
+
+      - name: 抓最新股價（Yahoo）與比較基準；證交所資料抓不到會略過，不影響股價
+        run: python scripts/update_data.py --auto
+
+      - name: 重算預設設定的回測（網站打開就有結果）
+        run: python scripts/run_backtest.py
+
+      - name: 有新資料就 commit 回 repo（Streamlit Cloud 會自動重新部署）
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed outputs/cache
+          if git diff --cached --quiet; then
+            echo "沒有新資料"
+          else
+            git commit -m "每日更新股價 $(date -u +%F)"
+            git pull --rebase --autostash
+            git push
+          fi

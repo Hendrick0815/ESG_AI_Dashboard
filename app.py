@@ -98,34 +98,35 @@ show_notes([n for n in res.notes if n not in ds.notes])
 st.subheader(f"🗓️ 最新選股（{res.latest_date:%Y-%m-%d} 收盤後）")
 st.caption(f"樣本外回測期間：{res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}｜每月調倉｜"
            f"{params.weighting}｜Top {params.top_n}｜模型 {params.model_name}｜"
-           f"{'均線全上＋產業向上' if params.use_screen else '不限技術面'}｜每天 ≥ 100 張｜"
-           f"{f'依大盤波動控管（回撤目標 {params.max_dd:.0%}）' if params.risk_control else '永遠滿倉'}")
+           f"{'風險控制：避開跌破年線與最震盪的股票、大盤跌破年線持股減半' if params.risk_control else '未做風險控制'}")
 
 perf = res.perf.set_index("portfolio")
 cards = []
 for strat in STRATEGIES:
     if strat in perf.index:
-        cards.append((f"{strat}", fmt_pct(perf.loc[strat, "ann_return"]),
-                      f"年化報酬｜最大回撤 {fmt_pct(perf.loc[strat, 'max_drawdown'])}｜Sharpe {fmt_num(perf.loc[strat, 'sharpe'])}"))
+        cards.append((f"{strat} 年化報酬", fmt_pct(perf.loc[strat, "ann_return"]),
+                      f"累積 {fmt_pct(perf.loc[strat, 'cum_return'])}｜最大回撤 {fmt_pct(perf.loc[strat, 'max_drawdown'])}"
+                      f"｜Sharpe {fmt_num(perf.loc[strat, 'sharpe'])}"))
 bench_key = next((b for b in config.BENCHMARKS if b in perf.index), None)
 if bench_key:
-    cards.append((labels.get(bench_key, bench_key), fmt_pct(perf.loc[bench_key, "ann_return"]),
-                  f"年化報酬｜最大回撤 {fmt_pct(perf.loc[bench_key, 'max_drawdown'])}"))
+    cards.append((f"{labels.get(bench_key, bench_key)} 年化報酬", fmt_pct(perf.loc[bench_key, "ann_return"]),
+                  f"累積 {fmt_pct(perf.loc[bench_key, 'cum_return'])}｜最大回撤 {fmt_pct(perf.loc[bench_key, 'max_drawdown'])}"))
 if params.risk_control and not res.risk_log.empty:
     expo = res.risk_log[res.risk_log["date"] == res.risk_log["date"].max()]["exposure"].max()
-    cards.append(("目前建議持股比例", fmt_pct(expo), f"依大盤波動｜回撤目標 {params.max_dd:.0%}"))
+    cards.append(("目前建議持股比例", fmt_pct(expo),
+                  "加權指數在年線之上" if expo >= 0.99 else "加權指數跌破年線，持股減半"))
 metric_cards(cards, min_width=200)
 
-for row in range(0, len(STRATEGIES), 2):
-    pick_cols = st.columns(2)
-    for col, strat in zip(pick_cols, STRATEGIES[row:row + 2]):
-        with col:
-            st.markdown(f"**{strat}**　<span style='opacity:.7'>{STRATEGY_DESC[strat]}</span>", unsafe_allow_html=True)
-            holdings_block(res.latest[res.latest["portfolio"] == strat], names, strat)
+pick_cols = st.columns(len(STRATEGIES))
+for col, strat in zip(pick_cols, STRATEGIES):
+    with col:
+        st.markdown(f"**{strat}**<br><span style='opacity:.7;font-size:.9em'>{STRATEGY_DESC[strat]}</span>",
+                    unsafe_allow_html=True)
+        holdings_block(res.latest[res.latest["portfolio"] == strat], names, strat)
 
 st.plotly_chart(charts.nav_chart(res.returns, labels, "累積淨值（樣本外，扣除交易成本）"), width="stretch")
 st.caption("實線 = 策略；虛線 = 比較基準。詳細績效、持股比例、歷次持股請看「策略回測」頁；"
-           "產業趨勢、法人買賣超、每檔股票的條件檢查請看「產業與籌碼」頁。")
+           "產業趨勢、法人買賣超請看「產業與籌碼」頁（僅供參考，不影響選股）。")
 
 st.divider()
 st.caption(

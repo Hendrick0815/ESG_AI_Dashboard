@@ -17,24 +17,12 @@ from . import config
 STRATEGY_AI_ESG = "AI+ESG"
 STRATEGY_AI = "單純 AI"
 STRATEGY_ESG = "單純 ESG"
-STRATEGY_TECH = "技術選股"
-STRATEGIES = [STRATEGY_AI_ESG, STRATEGY_AI, STRATEGY_ESG, STRATEGY_TECH]
+STRATEGIES = [STRATEGY_AI_ESG, STRATEGY_AI, STRATEGY_ESG]
 STRATEGY_DESC = {
     STRATEGY_AI_ESG: "AI 預測排名與 ESG 排名加權",
     STRATEGY_AI: "只看 AI 預測，不用 ESG",
     STRATEGY_ESG: "只看 ESG 總分",
-    STRATEGY_TECH: "突破整理＋出量＋法人買超，不用 AI",
 }
-SCREEN_LABELS = {
-    "liquid": "近 20 日每天 ≥ 100 張",
-    "ma_all_up": "均線全上（站上 5/10/20/60 日線，月線季線上揚）",
-    "ind_up": "產業趨勢向上（產業指數在季線上且近 1 月上漲）",
-    "near_breakout": "即將突破區間整理",
-    "mild_volume": "稍微出量（5 日均量為 20 日的 1.1～2 倍）",
-    "inst_buy": "法人（外資＋投信）近 20 日買超",
-}
-HARD_SCREENS = ["liquid", "ma_all_up", "ind_up"]          # 不符合就不能買
-SOFT_SCREENS = ["near_breakout", "mild_volume", "inst_buy"]  # 符合越多分數越高（技術選股的排序依據）
 
 
 # ------------------------------------------------------------------ 調倉日
@@ -69,45 +57,27 @@ def apply_esg_rules(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def apply_screen(snap: pd.DataFrame, use_screen: bool = True) -> pd.DataFrame:
-    """硬性條件：流動性一律套用；use_screen=True 時再加上均線全上、產業趨勢向上。
-    欄位缺資料（NaN）時：流動性、產業 → 不排除（無法判斷）；均線 → 排除（上市未滿 60 天）。"""
+def apply_risk_filters(snap: pd.DataFrame) -> pd.DataFrame:
+    """風險控制的個股濾網（缺資料時不排除）：
+    ① 收盤價在年線之下的股票不買；② 剩下的股票中，近 60 日波動最高的 20% 不買。"""
     out = snap
-    if "liquid" in out.columns:
-        out = out[out["liquid"].fillna(1) == 1]
-    if use_screen:
-        if "ma_all_up" in out.columns:
-            out = out[out["ma_all_up"] == 1]
-        if "ind_up" in out.columns:
-            out = out[out["ind_up"].fillna(1) == 1]
+    if "above_ma_long" in out.columns:
+        out = out[out["above_ma_long"].fillna(1) == 1]
+    if "vol_60" in out.columns and out["vol_60"].notna().any():
+        cap = out["vol_60"].quantile(config.VOL_CAP_QUANTILE)      # 在剩下的股票裡，排除最震盪的 20%
+        out = out[out["vol_60"].isna() | (out["vol_60"] <= cap)]
     return out
 
 
-def setup_score(snap: pd.DataFrame) -> pd.Series:
-    """技術選股分數 = 符合幾個加分條件（即將突破、稍微出量、法人買超）
-    ＋ 0～0.99 的細部排序（區間越窄、越接近高點、法人買越多、產業越強越好）。"""
-    pts = sum(snap[c].fillna(0) for c in SOFT_SCREENS if c in snap.columns)
-    parts = []
-    if "range_width" in snap.columns:
-        parts.append(_pct_rank(-snap["range_width"]))
-    if "dist_high" in snap.columns:
-        parts.append(_pct_rank(-snap["dist_high"].abs()))
-    for c in ["inst_net_20", "ind_mom_20"]:
-        if c in snap.columns and snap[c].notna().any():
-            parts.append(_pct_rank(snap[c]))
-    tie = pd.concat(parts, axis=1).mean(axis=1).fillna(0.5) if parts else 0.5
-    return pts + 0.99 * tie
-
-
-def score_strategies(snapshot: pd.DataFrame, esg_weight: float, use_screen: bool = True) -> Dict[str, pd.Series]:
-    """snapshot：某個調倉日所有股票（ticker, pred, esg_total, 條件欄位...）。
-    先套用選股條件，再由各策略在「合格名單」裡排序。回傳各策略的分數（越高越好）。"""
-    snap = apply_screen(snapshot.set_index("ticker"), use_screen)
+def score_strategies(snapshot: pd.DataFrame, esg_weight: float, risk_filters: bool = False) -> Dict[str, pd.Series]:
+    """snapshot：某個調倉日所有股票（ticker, pred, esg_total...）。回傳各策略的分數（越高越好）。
+    risk_filters=True：先排除跌破年線、波動最高 20% 的股票，再排序。"""
+    snap = snapshot.set_index("ticker")
+    if risk_filters:
+        snap = apply_risk_filters(snap)
     scores: Dict[str, pd.Series] = {}
     if snap.empty:
-        return {}
-    if any(c in snap.columns for c in SOFT_SCREENS + ["range_width"]):
-        scores[STRATEGY_TECH] = setup_score(snap)
+        return scores
     if "pred" in snap.columns and snap["pred"].notna().any():
         scores[STRATEGY_AI] = snap["pred"].dropna()
         filt = apply_esg_rules(snap.dropna(subset=["pred"]))
@@ -157,25 +127,17 @@ def trading_cost(old: pd.Series, new: pd.Series) -> float:
 
 @dataclass
 class RiskControl:
-    """波動度控管（每天收盤檢查；選股仍是每月一次）。
-
-    持股比例 = min(1, 目標年化波動 ÷ 大盤近期年化波動)，其餘放現金。
-    大盤近期波動取「近 20 日」與「近 60 日」兩者較大者：市場一震盪就立刻減碼，平靜後慢慢加回。
-    目標年化波動預設 = 回撤上限（10%）。比例以 10% 為單位調整，避免每天小幅進出付手續費。
-
-    為什麼不用停損或跌破季線出場？實測（2024–2026）這兩種做法在震盪盤會反覆「賣低買高」，
-    報酬大減、回撤卻沒有變小；依波動調整部位則是平滑的，回撤和報酬之間的取捨也最穩定。"""
-    market_vol: Optional[pd.Series] = None      # index=date，年化波動
-    vol_target: float = config.MAX_DD_TARGET
+    """大盤濾網（每天收盤檢查；選股仍是每月一次）：
+    market_exposure[d] = 當天收盤後應有的持股比例（加權指數在年線上 1.0，跌破年線 0.5）。
+    只調整持股比例、不在月中換股；比例以 step 為單位調整。"""
+    market_exposure: Optional[pd.Series] = None
     step: float = config.EXPOSURE_STEP
 
     def exposure(self, d) -> float:
-        if self.market_vol is None:
+        if self.market_exposure is None:
             return 1.0
-        v = self.market_vol.get(d, np.nan)
-        if pd.isna(v) or v <= 0:
-            return 1.0
-        return _quantize(min(1.0, self.vol_target / float(v)), self.step)
+        v = self.market_exposure.get(d, np.nan)
+        return 1.0 if pd.isna(v) else _quantize(float(v), self.step)
 
 
 def _quantize(x: float, step: float) -> float:
@@ -227,23 +189,22 @@ def simulate(targets: Dict[pd.Timestamp, pd.Series], ret_wide: pd.DataFrame,
     return pd.DataFrame(rows, columns=cols)
 
 
-def market_volatility(bench: pd.DataFrame, index: str = config.MARKET_INDEX,
-                      fallback: Optional[pd.DataFrame] = None) -> Optional[pd.Series]:
-    """大盤年化波動 = max(近 20 日, 近 60 日)。找不到指數就用股票池等權平均代替。只用當天以前的資料。"""
-    r = None
+def market_regime(bench: pd.DataFrame, index: str = config.MARKET_INDEX, ma: int = config.MARKET_MA,
+                  weak: float = config.MARKET_WEAK_EXPOSURE, fallback: Optional[pd.DataFrame] = None) -> Optional[pd.Series]:
+    """加權指數收盤價在 ma 日均線之上 → 1.0；之下 → weak。找不到指數就用股票池等權平均代替。只用當天以前的資料。"""
+    px = None
     if bench is not None and not bench.empty and index in set(bench["ticker"]):
         px = bench[bench["ticker"] == index].set_index("date")["close"].sort_index()
-        r = px.pct_change()
         if fallback is not None:
-            r = r.reindex(fallback.index)   # 對齊股票的交易日（指數偶爾缺一天）
+            px = px.reindex(px.index.union(fallback.index)).ffill().reindex(fallback.index)
     elif fallback is not None and not fallback.empty:
-        r = fallback.mean(axis=1)
-    if r is None or r.notna().sum() < 20:
+        px = (1 + fallback.mean(axis=1).fillna(0)).cumprod()
+    if px is None or px.notna().sum() < ma:
         return None
-    ann = np.sqrt(config.TRADING_DAYS)
-    v20 = r.rolling(20, min_periods=15).std() * ann
-    v60 = r.rolling(60, min_periods=40).std() * ann
-    return pd.concat([v20, v60], axis=1).max(axis=1)
+    m = px.rolling(ma).mean()
+    out = pd.Series(np.where(px < m, weak, 1.0), index=px.index)
+    out[m.isna()] = 1.0
+    return out
 
 
 def benchmark_returns(bench: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:

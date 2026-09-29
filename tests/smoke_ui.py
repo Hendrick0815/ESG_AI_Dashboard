@@ -197,15 +197,14 @@ if __name__ == "__main__":
     cases = [
         ("app.py", demo), ("pages/1_策略回測.py", demo), ("pages/2_個股分析.py", demo),
         ("pages/3_模型解釋.py", demo), ("pages/4_產業與籌碼.py", demo),
-        ("pages/1_策略回測.py", {**demo, "只買「均線全上」且「產業趨勢向上」的股票": False,
-                                "依大盤波動調整持股比例": False}),
+        ("pages/1_策略回測.py", {**demo, "風險控制（降低最大回撤）": False}),
         ("pages/1_策略回測.py", {**demo, "期間": "自訂"}),
         ("pages/1_策略回測.py", {**demo, "權重方式": "集中加權"}),
         ("pages/2_個股分析.py", {**demo, "K 線圖": True, "期間": "3 個月"}),
         ("app.py", {"資料來源": "real"}),            # 沒有真實股價 → 應提示更新；有的話跑完整流程
         ("pages/1_策略回測.py", {"資料來源": "real"}),
         ("pages/4_產業與籌碼.py", {"資料來源": "real"}),
-        ("pages/4_產業與籌碼.py", {"資料來源": "real", "只顯示合格股票": False, "統計期間": 20}),
+        ("pages/4_產業與籌碼.py", {"資料來源": "real", "統計期間": 20}),
     ]
     failed = 0
     for path, ov in cases:

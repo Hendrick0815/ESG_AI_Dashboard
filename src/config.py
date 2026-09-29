@@ -54,7 +54,7 @@ CORE_UNIVERSE = [
 ]
 
 # ---- 策略預設值 ----
-DEFAULT_TOP_N = 10
+DEFAULT_TOP_N = 15             # 分散到 15 檔：單一股票大跌對整體的影響變小
 DEFAULT_ESG_WEIGHT = 0.3        # AI+ESG 混合分數中 ESG 的比重
 DEFAULT_N_ESTIMATORS = 100
 RETRAIN_EVERY = 3               # 每 3 個月重新訓練一次模型（每月仍用最新模型選股）
@@ -69,17 +69,13 @@ CONVICTION_WEIGHTS = [0.30, 0.15, 0.10, 0.08, 0.06, 0.05, 0.04, 0.04, 0.03, 0.03
 # ESG 相關欄位（「單純 AI」一律不使用）
 ESG_COLS = ["esg_total", "e_score", "s_score", "g_score", "controversy_score", "carbon_intensity", "event_score"]
 
-# ---- 選股條件（技術面＋籌碼面）----
-MIN_DAILY_LOTS = 100            # 近 20 個交易日每天至少 100 張（排除成交量太小、容易被炒作的股票）
-RANGE_MAX_WIDTH = 0.25          # 區間整理：過去 40 天最高／最低不超過 25%
-BREAKOUT_BAND = 0.05            # 即將突破：收盤價距離區間高點 5% 以內
-BREAKOUT_MAX_ABOVE = 0.03       # 已經突破超過 3% 就不算「即將」突破（避免追高）
-VOLUME_RATIO_MIN = 1.1          # 稍微出量：5 日均量 / 20 日均量介於 1.1～2 倍
-VOLUME_RATIO_MAX = 2.0          # 超過 2 倍屬於爆量，常見於炒作或出貨，不算「稍微」
-
-# ---- 風險控制（目標：最大回撤 10% 以內）----
-MAX_DD_TARGET = 0.10            # 回撤目標；持股比例 = min(1, 此值 ÷ 大盤年化波動)
-MARKET_INDEX = "^TWII"          # 用加權指數的波動決定持股比例
-EXPOSURE_STEP = 0.1             # 持股比例以 10% 為單位調整，避免每天小幅進出付手續費
+# ---- 風險控制（降低最大回撤，同時盡量保留報酬）----
+# 三條都是常見、沒有針對這段回測期間最佳化的設定；改參數追求更好看的回測數字容易過度擬合。
+STOCK_TREND_MA = 200            # ① 不買跌破年線（200 日均線）的股票：避開長期下跌中的股票
+VOL_CAP_QUANTILE = 0.8          # ② 排除近 60 日波動最高的 20% 股票：大跌時通常跌最兇
+MARKET_INDEX = "^TWII"          # ③ 大盤濾網：加權指數跌破年線 → 持股減半，站回年線 → 恢復滿倉
+MARKET_MA = 200
+MARKET_WEAK_EXPOSURE = 0.5
+EXPOSURE_STEP = 0.1             # 持股比例的最小調整單位
 
 INSTITUTIONAL_FILE = PROCESSED_DIR / "institutional.csv"   # 三大法人買賣超（證交所 T86）

@@ -66,7 +66,7 @@ with st.expander("SHAP 分析（需安裝 shap，可能較慢）"):
 with st.expander("使用的特徵"):
     info = res.panel_info
     rows = [{"特徵": f, "名稱": TECH_LABELS.get(f, f), "類別": k, "AI 模型使用": "是"}
-            for k, fs in [("技術面", info["tech_features"]), ("量能／產業／籌碼", info.get("extra_features", [])),
+            for k, fs in [("技術面", info["tech_features"]),
                           ("估值／財務", info["fin_features"])] for f in fs]
     rows += [{"特徵": f, "名稱": TECH_LABELS.get(f, f), "類別": "ESG", "AI 模型使用": "否（選股時融合）"}
              for f in info["esg_features"]]

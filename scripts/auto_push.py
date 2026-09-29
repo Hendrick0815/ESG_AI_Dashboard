@@ -29,6 +29,9 @@ LOG = ROOT / "data" / "processed" / "auto_push.log"
 QUIET_SECONDS = 60      # 最後一次變動後要安靜多久才發佈
 POLL_SECONDS = 15
 TESTS = ["tests/test_core.py", "tests/smoke_ui.py"]
+# 有 GitHub Actions 每日更新時，資料一律以 GitHub 上的為準：本機抓的股價、回測存檔不推，避免兩邊衝突
+CLOUD_DATA = (ROOT / ".github" / "workflows" / "daily_update.yml").exists()
+DATA_PATHS = ("data/processed/", "outputs/cache/")
 TEST_TIMEOUT = 900
 
 
@@ -58,6 +61,8 @@ def pending_changes() -> list[str]:
         path = line[3:].strip().strip('"')
         if " -> " in path:                         # 改名
             path = path.split(" -> ", 1)[1]
+        if CLOUD_DATA and path.startswith(DATA_PATHS):
+            continue
         files.append(path)
     return files
 
@@ -97,7 +102,22 @@ def publish(files: list[str]) -> bool:
     code = [f for f in files if f.endswith(".py")]
     if code and not run_tests():
         return False
-    git("add", "-A", check=True)
+    if CLOUD_DATA:
+        # 本機資料丟掉、改用 GitHub 上每天自動更新的版本（兩邊內容一樣，只是避免合併衝突）
+        for d in DATA_PATHS:                      # 分開做：某個資料夾還沒被 git 追蹤時不會讓另一個失敗
+            if (ROOT / d).exists():
+                git("checkout", "--", d)
+        if (ROOT / "outputs" / "cache").exists():
+            git("clean", "-fq", "--", "outputs/cache/")
+    pull = git("pull", "--rebase", "--autostash")
+    if pull.returncode != 0:
+        git("rebase", "--abort")
+        log(f"  ✗ 無法和 GitHub 上的版本合併，請用 GitHub Desktop 處理：{(pull.stderr or pull.stdout).strip()[:300]}")
+        return False
+    if CLOUD_DATA:
+        git("add", "-A", "--", ".", *[f":(exclude){p}" for p in DATA_PATHS], check=True)
+    else:
+        git("add", "-A", check=True)
     if not git("diff", "--cached", "--name-only").stdout.strip():
         return True
     names = [Path(f).name for f in files]

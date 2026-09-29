@@ -122,7 +122,20 @@ Claude 改檔案 → 你電腦上的 auto_push 偵測到變動 → 跑測試 →
 
 ---
 
-## 六、幾個要知道的事
+## 六、股價每天自動更新（GitHub Actions，電腦不用開機）
+
+`.github/workflows/daily_update.yml` 會讓 **GitHub 的主機**在週一到週五台灣時間約 14:50 執行爬蟲：
+抓最新收盤價 → 重算回測 → commit 回 repo → Streamlit Cloud 自動重新部署。
+
+- 第一次使用：先雙擊 `scripts/setup_github_actions.bat`（把設定檔放進 `.github/workflows/`），推上 GitHub 後，到 repo 頁面的 **Actions** 分頁 → 左邊點「每日更新股價」→ 右邊 **Run workflow** 手動跑一次，確認成功（綠色勾勾）。
+- GitHub 的排程有時會晚十幾分鐘才開始，屬正常現象。
+- 股價來自 Yahoo，在 GitHub 主機上通常抓得到；證交所的本益比、三大法人可能被擋，會自動略過，不影響股價。
+- 有了這個之後，本機的 `install_schedule.bat` 就不需要了。`auto_push` 也會自動改成「只推程式碼、資料以 GitHub 上的為準」，
+  兩邊不會打架。用 GitHub Desktop 的話，Push 前先按 **Fetch origin → Pull**。
+
+---
+
+## 七、幾個要知道的事
 
 | 事項 | 說明 |
 |---|---|

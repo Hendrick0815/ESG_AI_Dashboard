@@ -25,9 +25,7 @@ class Params:
     start: Optional[str] = None
     end: Optional[str] = None
     tickers: Optional[tuple] = None          # None = 使用資料裡全部股票
-    use_screen: bool = True                  # 均線全上＋產業趨勢向上（流動性 ≥ 100 張一律套用）
-    risk_control: bool = True                # 大盤濾網＋回撤煞車＋個股停損
-    max_dd: float = config.MAX_DD_TARGET     # 回撤控制目標
+    risk_control: bool = True                # 不買跌破年線／最震盪的股票＋大盤跌破年線持股減半
 
     @property
     def hold_days(self) -> int:
@@ -53,7 +51,6 @@ class Result:
     last_X: Optional[pd.DataFrame] = None
     notes: List[str] = field(default_factory=list)
     risk_log: pd.DataFrame = field(default_factory=pd.DataFrame)   # date, portfolio, exposure（持股比例）
-    screen: pd.DataFrame = field(default_factory=pd.DataFrame)     # 最新一天每檔股票的條件檢查
 
 
 def _first_test_day(trading_days: pd.DatetimeIndex, hold_days: int) -> pd.Timestamp:
@@ -80,15 +77,7 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
     if n_tickers <= p.top_n:
         notes.append(f"股票池只有 {n_tickers} 檔，不多於 Top N（{p.top_n}），各策略會持有幾乎相同的股票。")
 
-    panel, info = build_panel(prices, ds.esg, ds.financials, p.hold_days, static_esg=p.static_esg,
-                              industries=ds.industries, flows=getattr(ds, "flows", None))
-    if not info["has_volume"]:
-        notes.append("股價資料沒有成交量：無法檢查「每天至少 100 張」與「稍微出量」，這兩個條件暫不套用。")
-    if p.use_screen and not info["has_industry"]:
-        notes.append("沒有產業分類（listing.csv）：「產業趨勢向上」條件暫不套用。")
-    if not info["has_flows"]:
-        notes.append("尚未有三大法人買賣超資料：技術選股不含「法人買超」加分。"
-                     "執行 `py scripts/update_data.py --flows` 可補抓。")
+    panel, info = build_panel(prices, ds.esg, ds.financials, p.hold_days, static_esg=p.static_esg)
     if info["esg_static"]:
         notes.append("⚠️ ESG 以「最新一期」回填到所有歷史日期，回測含前視偏差，只能當對照組。")
 
@@ -100,27 +89,25 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
     last_day = pd.Timestamp(trading_days[-1])
     pred_dates = schedule + ([last_day] if last_day not in schedule else [])
 
-    features = info["tech_features"] + info["extra_features"] + info["fin_features"]  # 模型不使用 ESG（ESG 另外融合）
+    features = info["tech_features"] + info["fin_features"]      # 模型不使用 ESG（ESG 另外融合）
     wf = walk_forward(panel, features, pred_dates, trading_days, p.hold_days, p.model_name,
                       p.n_estimators, retrain_every=config.RETRAIN_EVERY, required=info["tech_features"],
                       progress=progress)
     if wf.predictions.empty:
         raise ValueError("訓練樣本不足，模型無法產生預測。請拉長資料期間或擴大股票池。")
 
-    from .features import SCREEN_COLS
-    snap_cols = ["date", "ticker"] + [c for c in ["esg_total", "controversy_score", "eps", *SCREEN_COLS,
-                                                  "range_width", "dist_high", "vol_ratio", "inst_net_20",
-                                                  "ind_mom_20", "industry", "close", "avg_vol_20"]
+    from .features import RISK_COLS
+    snap_cols = ["date", "ticker"] + [c for c in ["esg_total", "controversy_score", "eps", *RISK_COLS]
                                       if c in panel.columns]
-    # 單純 ESG、技術選股不需要模型：沒有預測的股票也要納入
+    # 單純 ESG 不需要模型：沒有預測的股票也要納入
     snaps = panel[panel["date"].isin(pred_dates)][snap_cols].merge(wf.predictions, on=["date", "ticker"], how="left")
 
     targets: Dict[str, Dict[pd.Timestamp, pd.Series]] = {s: {} for s in bt.STRATEGIES}
     hold_rows = []
     for d, snap in snaps.groupby("date"):
-        scores = bt.score_strategies(snap, p.esg_weight, p.use_screen)
+        scores = bt.score_strategies(snap, p.esg_weight, risk_filters=p.risk_control)
         for strat, sc in scores.items():
-            w = bt.make_weights(sc, p.top_n, p.weighting, fill_cash=True)
+            w = bt.make_weights(sc, p.top_n, p.weighting)
             if d in schedule:
                 targets[strat][d] = w
             hold_rows.append(pd.DataFrame({"date": d, "portfolio": strat, "ticker": w.index,
@@ -138,13 +125,12 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
     risk = None
     if p.risk_control:
         if ds.benchmarks.empty or config.MARKET_INDEX not in set(ds.benchmarks["ticker"]):
-            notes.append("找不到加權指數（^TWII），大盤波動改用股票池等權平均估計。")
-        risk = bt.RiskControl(market_vol=bt.market_volatility(ds.benchmarks, fallback=ret_wide),
-                              vol_target=p.max_dd)
+            notes.append("找不到加權指數（^TWII），大盤年線改用股票池等權平均計算。")
+        risk = bt.RiskControl(market_exposure=bt.market_regime(ds.benchmarks, fallback=ret_wide))
     series, trades, risk_rows = [], [], []
     for strat in bt.STRATEGIES:
         if not targets[strat]:
-            why = {bt.STRATEGY_AI: "模型無預測", bt.STRATEGY_TECH: "沒有技術面資料"}.get(strat, "缺少 ESG 資料")
+            why = "模型無預測" if strat == bt.STRATEGY_AI else "缺少 ESG 資料"
             notes.append(f"「{strat}」沒有可用的選股（{why}）。")
             continue
         sim = bt.simulate(targets[strat], ret_wide, risk)
@@ -171,7 +157,6 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
                      f"在那之前 AI+ESG 等同單純 AI、單純 ESG 為空手。補齊 TEJ 歷史各期評等即可改善。")
 
     latest = holdings[holdings["date"] == last_day] if not holdings.empty else holdings
-    screen = snaps[snaps["date"] == last_day].drop(columns=["date"]).reset_index(drop=True)
     return Result(
         params=p, panel_info=info, test_start=bt_start, rebalance_dates=schedule, latest_date=last_day,
         returns=returns, perf=performance_table(returns), holdings=holdings, latest=latest,
@@ -179,7 +164,6 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
         evaluation=evaluation, importance=importance, train_log=pd.DataFrame(wf.train_log),
         model=wf.model, last_X=wf.last_X, notes=notes,
         risk_log=pd.concat(risk_rows, ignore_index=True) if risk_rows else pd.DataFrame(),
-        screen=screen,
     )
 
 

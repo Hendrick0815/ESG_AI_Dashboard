@@ -106,19 +106,12 @@ def sidebar_strategy(ds: store.Dataset) -> Params:
         esg_w = _keep("esg_w", st.slider("AI+ESG 中 ESG 的比重", 0.0, 1.0, _remember("esg_w", config.DEFAULT_ESG_WEIGHT), 0.05,
                                          help="混合分數 =（1−比重）× AI 預測排名 ＋ 比重 × ESG 排名"))
         st.caption("每月最後一個交易日調倉；已扣交易成本（手續費 0.1425%、賣出證交稅 0.3%）")
-        st.subheader("選股條件與風險")
-        use_screen = _keep("use_screen", st.checkbox(
-            "只買「均線全上」且「產業趨勢向上」的股票", _remember("use_screen", True),
-            help="均線全上：收盤價站上 5/10/20/60 日均線，且月線、季線上揚。\n\n"
-                 "產業趨勢向上：同產業股票的等權指數在季線之上、且近 1 個月上漲。\n\n"
-                 "每天成交量至少 100 張的條件一律套用。合格股票不足 N 檔時，空下的名額放現金。"))
-        risk_on = _keep("risk_on", st.checkbox("依大盤波動調整持股比例", _remember("risk_on", True),
-                                               help="持股比例 = 回撤目標 ÷ 大盤近期年化波動（最多 100%），其餘放現金。"))
-        max_dd = config.MAX_DD_TARGET
-        if risk_on:
-            pct = _keep("max_dd_pct", st.slider("回撤目標（%）", 5, 30, _remember("max_dd_pct", int(config.MAX_DD_TARGET * 100)), 1,
-                                                help="越小越保守：持股比例越低、報酬也越低。這是設計目標，不是保證。"))
-            max_dd = pct / 100
+        risk_on = _keep("risk_on", st.checkbox(
+            "風險控制（降低最大回撤）", _remember("risk_on", True),
+            help="① 不買跌破年線（200 日均線）的股票\n\n"
+                 "② 不買近 60 日波動最高的 20% 股票\n\n"
+                 "③ 加權指數跌破年線時持股減半，站回年線恢復滿倉\n\n"
+                 "取消勾選可以和不做風險控制的結果比較。"))
         with st.expander("進階"):
             trees = _keep("trees", st.slider("樹的數量", 50, 500, _remember("trees", config.DEFAULT_N_ESTIMATORS), 50))
             static_esg = _keep("static_esg", st.checkbox(
@@ -131,7 +124,7 @@ def sidebar_strategy(ds: store.Dataset) -> Params:
     return Params(model_name=model, top_n=top_n, n_estimators=trees, esg_weight=esg_w,
                   weighting=weighting, static_esg=static_esg,
                   tickers=tuple(sorted(picked)) or None,
-                  use_screen=use_screen, risk_control=risk_on, max_dd=round(float(max_dd), 2))
+                  risk_control=risk_on)
 
 
 def get_result(mode: str, demo_set: Optional[str], params: Params) -> Optional[Result]:
@@ -222,18 +215,15 @@ def holdings_table(df: pd.DataFrame, names: Dict[str, str], score_fmt: str = "{:
     return out
 
 
-SCORE_FMT = {"單純 ESG": "{:.1f}", "技術選股": "{:.2f}"}
+SCORE_FMT = {"單純 ESG": "{:.1f}"}
 
 
-def holdings_block(sub: pd.DataFrame, names: Dict[str, str], strat: str, empty_text: str = "沒有符合條件的股票（全部現金）") -> None:
-    """一個策略的持股表；權重合計不到 100% 時註明現金比例。"""
+def holdings_block(sub: pd.DataFrame, names: Dict[str, str], strat: str, empty_text: str = "沒有可用的選股") -> None:
+    """一個策略的持股表（權重是滿倉時的比例；大盤跌破年線時實際持股會減半）。"""
     if sub.empty:
         st.info(empty_text)
         return
     st.dataframe(holdings_table(sub, names, SCORE_FMT.get(strat, "{:.3f}")), hide_index=True, width="stretch")
-    cash = 1 - float(sub["weight"].sum())
-    if cash > 0.005:
-        st.caption(f"合格股票只有 {len(sub)} 檔，其餘 {cash:.0%} 放現金（再依大盤波動調整持股比例）")
 
 
 def portfolio_labels(names: Dict[str, str]) -> Dict[str, str]:

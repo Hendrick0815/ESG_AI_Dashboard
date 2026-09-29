@@ -279,68 +279,46 @@ def test_real_mode_with_tej_partial_history(tmp_path=None):
          config.TEJ_DIR) = old
 
 
-# ------------------------------------------------------------------ 選股條件、風險控制、法人、自動更新
-def _series_prices(close, volume=None, ticker="AAA", start="2025-01-01"):
+# ------------------------------------------------------------------ 風險控制、法人、自動更新
+def _series_prices(close, ticker="AAA", start="2024-01-01"):
     days = pd.bdate_range(start, periods=len(close))
-    return pd.DataFrame({"date": days, "ticker": ticker, "close": close, "high": close, "low": close,
-                         "volume": volume if volume is not None else np.full(len(close), 1e6)})
+    return pd.DataFrame({"date": days, "ticker": ticker, "close": close})
 
 
-def test_screen_flags_on_constructed_prices():
+def test_stock_trend_and_volatility_filters():
     from src.features import add_technical
-    # 先上漲 80 天，再在 100～104 之間整理 40 天（窄區間、接近高點），最後 5 天量稍微放大
-    up = np.linspace(60, 100, 80)
-    box = 100 + 4 * (np.arange(40) % 2)
-    close = np.concatenate([up, box, [103.5] * 5])
-    vol = np.concatenate([np.full(120, 1e6), np.full(5, 1.6e6)])
-    t = add_technical(_series_prices(close, vol), hold_days=5)
-    last = t.iloc[-1]
-    assert last["near_breakout"] == 1 and last["range_width"] <= config.RANGE_MAX_WIDTH
-    assert last["mild_volume"] == 1 and 1.1 <= last["vol_ratio"] <= 2
-    assert last["liquid"] == 1
-    # 下跌走勢：均線全上不成立
-    down = add_technical(_series_prices(np.linspace(100, 60, 120)), hold_days=5).iloc[-1]
-    assert down["ma_all_up"] == 0
+    down = add_technical(_series_prices(np.linspace(100, 60, 260)), hold_days=5).iloc[-1]
+    up = add_technical(_series_prices(np.linspace(60, 100, 260)), hold_days=5).iloc[-1]
+    assert down["above_ma_long"] == 0 and up["above_ma_long"] == 1
+    young = add_technical(_series_prices(np.linspace(60, 100, 100)), hold_days=5).iloc[-1]
+    assert np.isnan(young["above_ma_long"])                  # 上市不滿 150 天 → 無法判斷，不排除
+    snap = pd.DataFrame({"ticker": list("ABCDEFGHIJ"), "above_ma_long": [0.0] + [1.0] * 8 + [np.nan],
+                         "vol_60": [0.1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.9, 0.2]}).set_index("ticker")
+    kept = bt.apply_risk_filters(snap)
+    assert "A" not in kept.index                              # 跌破年線
+    assert "I" not in kept.index                              # 波動最高的 20%
+    assert "J" in kept.index                                  # 年線缺資料不排除
 
 
-def test_low_volume_stocks_are_excluded():
-    from src.features import add_technical
-    thin = np.full(80, 1e6)
-    thin[-3] = 50_000                                  # 近 20 天有一天只有 50 張
-    t = add_technical(_series_prices(np.linspace(50, 80, 80), thin), hold_days=5)
-    assert t.iloc[-1]["liquid"] == 0
-    snap = pd.DataFrame({"ticker": ["A", "B"], "liquid": [0.0, 1.0], "ma_all_up": [1.0, 1.0],
-                         "ind_up": [1.0, np.nan], "pred": [0.9, 0.1]})
-    kept = bt.apply_screen(snap.set_index("ticker"))
-    assert list(kept.index) == ["B"]                   # 產業資料缺值不排除，但流動性不足一定排除
-
-
-def test_fill_cash_when_few_candidates():
-    s = pd.Series({"A": 3.0, "B": 2.0})
-    w = bt.make_weights(s, 10, "等權", fill_cash=True)
-    assert abs(w.sum() - 0.2) < 1e-12 and abs(w["A"] - 0.1) < 1e-12
-
-
-def test_volatility_targeting_scales_exposure_without_lookahead():
+def test_market_regime_halves_exposure_without_lookahead():
     days = pd.bdate_range("2026-01-01", periods=6)
     ret = pd.DataFrame({"A": [0.0, 0.01, -0.02, 0.01, 0.0, 0.0]}, index=days)
-    vol = pd.Series([0.05, 0.05, 0.25, 0.25, 0.25, 0.25], index=days)   # 第 3 天大盤變震盪
-    sim = bt.simulate({days[0]: pd.Series({"A": 1.0})}, ret, bt.RiskControl(market_vol=vol, vol_target=0.10))
-    assert sim.loc[0, "exposure"] == 1.0
-    assert abs(sim.loc[2, "exposure"] - 0.4) < 0.02      # 0.10 / 0.25 = 40%（當天收盤調整）
-    # 第 3 天的報酬仍以調整前的滿倉計算（收盤後才減碼，不能事先知道）
-    assert abs(sim.loc[2, "ret"] - (-0.02 * 1.0 - 0.6 * (config.COMMISSION + config.SELL_TAX)) * 1) < 2e-3
-    # 大盤波動的計算只用到當天以前的資料
-    bench = pd.DataFrame({"date": pd.bdate_range("2025-01-01", periods=120), "ticker": "^TWII",
-                          "close": 100 * np.cumprod(1 + np.random.default_rng(1).normal(0, 0.01, 120))})
-    v1 = bt.market_volatility(bench)
+    regime = pd.Series([1.0, 1.0, 0.5, 0.5, 1.0, 1.0], index=days)   # 第 3 天收盤跌破年線
+    sim = bt.simulate({days[0]: pd.Series({"A": 1.0})}, ret, bt.RiskControl(market_exposure=regime))
+    assert list(sim["exposure"].round(1)) == [1.0, 1.0, 0.5, 0.5, 1.0, 1.0]   # 中間會隨股價小幅漂移
+    # 第 3 天的報酬仍以滿倉計算（收盤後才減碼，不能事先知道），再扣賣出一半的成本
+    assert abs(sim.loc[2, "ret"] - ((1 - 0.02) * (1 - 0.5 * (config.COMMISSION + config.SELL_TAX)) - 1)) < 1e-3
+    # 年線判斷只用到當天以前的資料
+    bench = pd.DataFrame({"date": pd.bdate_range("2025-01-01", periods=260), "ticker": "^TWII",
+                          "close": 100 * np.cumprod(1 + np.random.default_rng(1).normal(0, 0.01, 260))})
+    r1 = bt.market_regime(bench)
     bench2 = bench.copy()
-    bench2.loc[bench2.index[-1], "close"] *= 1.5
-    v2 = bt.market_volatility(bench2)
-    assert np.allclose(v1.iloc[:-1].dropna(), v2.iloc[:-1].dropna())
+    bench2.loc[bench2.index[-1], "close"] *= 0.5
+    r2 = bt.market_regime(bench2)
+    assert r1.iloc[:-1].equals(r2.iloc[:-1])
 
 
-def test_parse_t86_and_flows_are_lagged_one_day():
+def test_parse_t86():
     fields = ["證券代號", "證券名稱", "外陸資買賣超股數(不含外資自營商)", "外資自營商買賣超股數",
               "投信買賣超股數", "自營商買賣超股數", "自營商買賣超股數(自行買賣)", "三大法人買賣超股數"]
     payload = {"stat": "OK", "fields": fields,
@@ -350,15 +328,6 @@ def test_parse_t86_and_flows_are_lagged_one_day():
     assert list(f["ticker"]) == ["2330.TW"]
     assert f.iloc[0]["foreign_net"] == 6100 and f.iloc[0]["trust_net"] == 300 and f.iloc[0]["dealer_net"] == -50
     assert twse.parse_t86({"stat": "很抱歉，沒有符合條件的資料!"}, "2026-09-19").empty
-
-    from src.features import add_flows, add_technical
-    px_ = _series_prices(np.linspace(50, 60, 40), ticker="2330.TW")
-    flows = pd.DataFrame({"date": px_["date"], "ticker": "2330.TW", "foreign_net": 1e5, "trust_net": 0.0})
-    a = add_flows(add_technical(px_, 5), flows)
-    flows2 = flows.copy()
-    flows2.loc[flows2.index[-1], "foreign_net"] = 9e9          # 改「當天」的法人資料
-    b = add_flows(add_technical(px_, 5), flows2)
-    assert a.iloc[-1]["inst_net_20"] == b.iloc[-1]["inst_net_20"]   # 當天的決策不受影響
 
 
 def test_last_close_date_and_consecutive_day_updates():
@@ -374,16 +343,13 @@ def test_last_close_date_and_consecutive_day_updates():
     assert store.plan_fetch(have, ["AAA"], "2026-06-01", "2026-09-28") == {}
 
 
-def test_tech_strategy_and_risk_control_in_pipeline():
+def test_risk_control_in_pipeline():
     ds = _demo()
-    r = run(ds, Params(top_n=3, n_estimators=20))
-    assert bt.STRATEGY_TECH in set(r.returns["portfolio"])
-    assert not r.risk_log.empty and r.risk_log["exposure"].between(0, 1 + 1e-9).all()
-    assert not r.screen.empty and "ma_all_up" in r.screen.columns
-    # 所有持股都必須通過硬性條件
-    assert (r.holdings["weight"] <= 1 / 3 + 1e-9).all()
+    on = run(ds, Params(top_n=3, n_estimators=20))
     off = run(ds, Params(top_n=3, n_estimators=20, risk_control=False))
-    assert off.risk_log.groupby("portfolio")["exposure"].max().max() <= 1 + 1e-9
+    assert bt.STRATEGY_AI in set(on.returns["portfolio"])
+    assert not on.risk_log.empty and on.risk_log["exposure"].between(0, 1 + 1e-9).all()
+    assert off.risk_log["exposure"].round(6).isin([0.0, 1.0]).all()     # 關閉時永遠滿倉（或空手）
 
 
 if __name__ == "__main__":
