@@ -1,3 +1,4 @@
-﻿time,start,end,universe,prices_rows,prices_failed,valuation
-2026-09-20 21:03:00,2023-09-20,2026-09-20,core,36549,0,"{'dates_requested': 37, 'rows_downloaded': 37259}"
-2026-09-20 23:29:15,2022-09-01,2026-09-20,core,49250,0,"{'dates_requested': 13, 'rows_downloaded': 12736}"
+﻿time,start,end,universe,prices_rows,prices_failed,valuation,type,target,prices,benchmarks,institutional,last_price_date
+2026-09-20 21:03:00,2023-09-20,2026-09-20,core,36549.0,0.0,"{'dates_requested': 37, 'rows_downloaded': 37259}",,,,,,
+2026-09-20 23:29:15,2022-09-01,2026-09-20,core,49250.0,0.0,"{'dates_requested': 13, 'rows_downloaded': 12736}",,,,,,
+2026-09-29 12:28:52,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-09-29,"{'rows': 750, 'failed': 0}",{'rows': 60},"{'dates_requested': 10, 'rows_downloaded': 10794}",2026-09-29
