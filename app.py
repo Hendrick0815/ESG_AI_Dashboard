@@ -44,7 +44,7 @@ with st.expander("📦 資料狀態與更新", expanded=ds.prices.empty):
         if universe in ("top", "tej"):
             st.caption(f"⚠️ 檔數多時建議改在終端機執行 `py scripts/update_data.py --universe {universe}`："
                        "網頁更新期間不能切換頁面，否則會中斷。")
-        years = u2.slider("回看年數", 1, 5, 3)
+        years = u2.slider("回看年數", 1, 10, 9)
         do_val = u3.checkbox("一併抓本益比／淨值比／殖利率", value=True, help="每月一筆，約 3 秒一個月")
         if st.button("🔄 更新資料", type="primary"):
             end = store.last_close_date()

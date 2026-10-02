@@ -390,3 +390,24 @@ def test_parse_trading_value():
     b = twse.parse_trading_value(tpex_payload, pd.Timestamp("2026-09-18"), ".TWO")
     assert a["ticker"].tolist() == ["2330.TW"] and a["trade_value"].iloc[0] == 2_500_000
     assert b["ticker"].tolist() == ["8299.TWO"] and b["trade_value"].iloc[0] == 1234
+
+
+def test_peak_features():
+    from src.features import add_technical
+    idx = pd.bdate_range("2024-01-01", periods=80)
+    close = list(np.linspace(10, 30, 60)) + [29, 28, 27, 26, 27, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14]
+    df = add_technical(pd.DataFrame({"date": idx, "ticker": "A", "close": close, "volume": 1000.0}), 5)
+    last = df.iloc[-1]
+    assert last["days_since_high20"] == 19                 # 近 20 日高點（29 元）在 19 天前
+    assert abs(last["dd_high20"] - (14 / 29 - 1)) < 1e-9
+    assert last["down_streak"] == 14                        # 最後 14 天連跌
+    assert abs(last["vol_ratio"] - 1) < 1e-9                # 量能不變 → 1
+    assert df.iloc[59]["dd_high20"] == 0 and df.iloc[59]["days_since_high20"] == 0
+
+
+def test_industry_cap():
+    s = pd.Series({"A": 5.0, "B": 4.0, "C": 3.0, "D": 2.0, "E": 1.0})
+    ind = {"A": "半導體", "B": "半導體", "C": "半導體", "D": "金融"}
+    top = bt.pick_top(s, 3, ind, max_per_industry=2)
+    assert list(top.index) == ["A", "B", "D"]               # C 超過半導體上限被跳過
+    assert list(bt.pick_top(s, 3).index) == ["A", "B", "C"]  # 不限制時照分數

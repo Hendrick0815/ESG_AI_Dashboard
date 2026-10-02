@@ -8,7 +8,7 @@ import pandas as pd
 
 from . import backtest as bt
 from . import config
-from .features import build_panel
+from .features import INDUSTRY_FEATURES, PEAK_FEATURES, build_panel
 from .metrics import performance_table
 from .models import walk_forward
 from .store import Dataset
@@ -77,7 +77,9 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
     if n_tickers <= p.top_n:
         notes.append(f"股票池只有 {n_tickers} 檔，不多於 Top N（{p.top_n}），各策略會持有幾乎相同的股票。")
 
-    panel, info = build_panel(prices, ds.esg, ds.financials, p.hold_days, static_esg=p.static_esg)
+    industries = ds.industries
+    panel, info = build_panel(prices, ds.esg, ds.financials, p.hold_days, static_esg=p.static_esg,
+                              industries=industries)
     if info["esg_static"]:
         notes.append("⚠️ ESG 以「最新一期」回填到所有歷史日期，回測含前視偏差，只能當對照組。")
 
@@ -89,7 +91,10 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
     last_day = pd.Timestamp(trading_days[-1])
     pred_dates = schedule + ([last_day] if last_day not in schedule else [])
 
-    features = info["tech_features"] + info["fin_features"]      # 模型不使用 ESG（ESG 另外融合）
+    extra = [f for f in info.get("extra_features", [])
+             if (config.USE_PEAK_FEATURES or f not in PEAK_FEATURES)
+             and (config.USE_INDUSTRY_FEATURES or f not in INDUSTRY_FEATURES)]
+    features = info["tech_features"] + extra + info["fin_features"]      # 模型不使用 ESG（ESG 另外融合）
     wf = walk_forward(panel, features, pred_dates, trading_days, p.hold_days, p.model_name,
                       p.n_estimators, retrain_every=config.RETRAIN_EVERY, required=info["tech_features"],
                       progress=progress)
@@ -97,7 +102,7 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
         raise ValueError("訓練樣本不足，模型無法產生預測。請拉長資料期間或擴大股票池。")
 
     from .features import RISK_COLS
-    snap_cols = ["date", "ticker"] + [c for c in ["esg_total", "controversy_score", "eps", *RISK_COLS]
+    snap_cols = ["date", "ticker"] + [c for c in ["esg_total", "controversy_score", "eps", "ind_gap_ma60", *RISK_COLS]
                                       if c in panel.columns]
     # 單純 ESG 不需要模型：沒有預測的股票也要納入
     snaps = panel[panel["date"].isin(pred_dates)][snap_cols].merge(wf.predictions, on=["date", "ticker"], how="left")
@@ -105,9 +110,12 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
     targets: Dict[str, Dict[pd.Timestamp, pd.Series]] = {s: {} for s in bt.STRATEGIES}
     hold_rows = []
     for d, snap in snaps.groupby("date"):
+        if config.INDUSTRY_TREND_FILTER and "ind_gap_ma60" in snap.columns:
+            snap = snap[snap["ind_gap_ma60"].isna() | (snap["ind_gap_ma60"] > 0)]   # 產業在季線下的不買
         scores = bt.score_strategies(snap, p.esg_weight, risk_filters=p.risk_control)
         for strat, sc in scores.items():
-            w = bt.make_weights(sc, p.top_n, p.weighting)
+            w = bt.make_weights(sc, p.top_n, p.weighting, industries=industries,
+                                max_per_industry=config.MAX_PER_INDUSTRY)
             if d in schedule:
                 targets[strat][d] = w
             hold_rows.append(pd.DataFrame({"date": d, "portfolio": strat, "ticker": w.index,

@@ -3,7 +3,7 @@
 用法（在專案根目錄）：
     py scripts/update_data.py --auto                # 每日自動更新：補到最近收盤日（排程用，約 1 分鐘）
     py scripts/update_data.py --flows               # 回補三大法人買賣超（第一次約 40 分鐘，可中斷續抓）
-    python scripts/update_data.py                   # 成交金額前 300 大 + 比較基準，回看 3 年（第一次約 10 分鐘）
+    python scripts/update_data.py                   # 成交金額前 300 大 + 比較基準，從 2017-08 起（第一次約 15 分鐘）
     python scripts/update_data.py --universe core   # 只抓市值前 50 大
     python scripts/update_data.py --universe tej    # 所有有 TEJ ESG 評等的上市櫃股票
     python scripts/update_data.py --skip-valuation  # 不抓本益比等估值（比較快）
@@ -48,7 +48,7 @@ def main() -> None:
     ap.add_argument("--flows", action="store_true", help="回補三大法人買賣超（證交所 T86）")
     ap.add_argument("--flows-start", default=None,
                     help="三大法人從哪天開始回補（預設：回測開始前一個月，約股價資料起點後 16 個月）")
-    ap.add_argument("--start", default=(today - pd.DateOffset(years=3)).strftime("%Y-%m-%d"))
+    ap.add_argument("--start", default=config.HISTORY_START, help=f"歷史起點（預設 {config.HISTORY_START}）")
     ap.add_argument("--end", default=today.strftime("%Y-%m-%d"))
     ap.add_argument("--universe", choices=["top", "core", "tej", "all"], default="top")
     ap.add_argument("--max", type=int, default=None, help=f"最多抓幾檔（top 預設 {config.UNIVERSE_SIZE}）")

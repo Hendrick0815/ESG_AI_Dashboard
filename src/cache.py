@@ -16,7 +16,7 @@ from . import config
 
 log = logging.getLogger(__name__)
 
-CACHE_VERSION = "2026-10-02-reb10"   # 回測邏輯有改時換掉，舊存檔就不會被用到
+CACHE_VERSION = "2026-10-02-8y-peak-ind5"   # 回測邏輯有改時換掉，舊存檔就不會被用到
 KEEP_FILES = 30
 
 

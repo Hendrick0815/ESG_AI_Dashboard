@@ -59,12 +59,16 @@ def merge_prices(*frames: Optional[pd.DataFrame]) -> pd.DataFrame:
     for c in PRICE_COLS:
         if c not in df.columns:
             df[c] = pd.NA
+    for c in ["open", "high", "low", "close"]:          # 4 位小數就夠精確，檔案小約 4 成
+        df[c] = pd.to_numeric(df[c], errors="coerce").round(4)
+    df["volume"] = pd.to_numeric(df["volume"], errors="coerce").round().astype("Int64")
     return df[PRICE_COLS].reset_index(drop=True)
 
 
 def plan_fetch(existing: Optional[pd.DataFrame], tickers: List[str], start, end,
-               overlap_days: int = 7) -> Dict[pd.Timestamp, List[str]]:
-    """決定每檔要從哪天開始抓 → {開始日: [代號...]}；已經是最新的就不抓。"""
+               overlap_days: int = 7, backfill: bool = True) -> Dict[pd.Timestamp, List[str]]:
+    """決定每檔要從哪天開始抓 → {開始日: [代號...]}；已經是最新的就不抓。
+    backfill=False：已有資料的股票只往後補，不回頭補更早的歷史（避免較晚上市的股票每天重抓全部歷史）。"""
     start, end = pd.Timestamp(start).normalize(), pd.Timestamp(end).normalize()
     plan: Dict[pd.Timestamp, List[str]] = {}
     span = {}
@@ -72,7 +76,7 @@ def plan_fetch(existing: Optional[pd.DataFrame], tickers: List[str], start, end,
         span = existing.groupby("ticker")["date"].agg(["min", "max"]).to_dict("index")
     for t in tickers:
         s = span.get(t)
-        if s is None or s["min"] > start + pd.Timedelta(days=overlap_days):
+        if s is None or (backfill and s["min"] > start + pd.Timedelta(days=overlap_days)):
             fetch_from = start                     # 沒有資料，或歷史不夠長 → 從頭抓
         elif s["max"] >= end:
             continue                               # 已是最新（舊版用 end - 1 天，連續兩天更新時會漏抓最新一天）
@@ -101,13 +105,13 @@ def _remember_failures(failed: List[str], succeeded: set) -> None:
     write_csv(df, FAILED_FILE)
 
 
-def _update_price_file(path: Path, tickers: List[str], start, end, progress=None) -> Dict:
+def _update_price_file(path: Path, tickers: List[str], start, end, progress=None, backfill: bool = True) -> Dict:
     from .crawlers import yahoo
     existing = _read(path)
     have = set(existing["ticker"]) if existing is not None else set()
     skip = _recent_failures() - have
     tickers = [t for t in tickers if t not in skip]
-    plan = plan_fetch(existing, tickers, start, end)
+    plan = plan_fetch(existing, tickers, start, end, backfill=backfill)
     new_frames, failed = [], []
     for fetch_from, batch in plan.items():
         df, bad = yahoo.fetch_prices(batch, fetch_from, end, progress=progress)
@@ -126,12 +130,12 @@ def _update_price_file(path: Path, tickers: List[str], start, end, progress=None
             "total_rows": len(merged)}
 
 
-def update_prices(tickers: List[str], start, end, progress=None) -> Dict:
-    return _update_price_file(config.PRICES_FILE, tickers, start, end, progress)
+def update_prices(tickers: List[str], start, end, progress=None, backfill: bool = True) -> Dict:
+    return _update_price_file(config.PRICES_FILE, tickers, start, end, progress, backfill)
 
 
-def update_benchmarks(start, end, tickers: List[str] = config.BENCHMARKS) -> Dict:
-    return _update_price_file(config.BENCH_FILE, tickers, start, end)
+def update_benchmarks(start, end, tickers: List[str] = config.BENCHMARKS, backfill: bool = True) -> Dict:
+    return _update_price_file(config.BENCH_FILE, tickers, start, end, backfill=backfill)
 
 
 def update_listing() -> pd.DataFrame:
@@ -163,12 +167,22 @@ def update_valuation(start=None, progress=None) -> Dict:
     wanted = [pd.Timestamp(x) for x in month_end_trading_days(prices, start)]
     have = set(existing["date"]) if existing is not None else set()
     todo = [d for d in wanted if d not in have]
-    new = twse.fetch_valuation_series(todo, progress=progress) if todo else None
-    if new is not None and not new.empty:
-        merged = pd.concat([x for x in [existing, new] if x is not None], ignore_index=True)
-        merged = merged.drop_duplicates(["date", "ticker"], keep="last").sort_values(["date", "ticker"])
-        write_csv(merged, config.VALUATION_FILE)
-    return {"dates_requested": len(todo), "rows_downloaded": 0 if new is None else len(new)}
+    rows, frame, blocked = 0, existing, None
+    for i in range(0, len(todo), 6):                 # 每 6 個月存一次：被證交所擋下時已抓到的不會白費
+        try:
+            new = twse.fetch_valuation_series(todo[i:i + 6], progress=progress)
+        except PermissionError as e:
+            blocked = str(e)
+            break
+        if new is not None and not new.empty:
+            frame = pd.concat([x for x in [frame, new] if x is not None], ignore_index=True)
+            frame = frame.drop_duplicates(["date", "ticker"], keep="last").sort_values(["date", "ticker"])
+            write_csv(frame, config.VALUATION_FILE)
+            rows += len(new)
+    out = {"dates_requested": len(todo), "rows_downloaded": rows}
+    if blocked:
+        out["blocked"] = "證交所暫時擋下，下次更新會接著補"
+    return out
 
 
 def update_institutional(start=None, max_days: Optional[int] = None, progress=None) -> Dict:
@@ -268,7 +282,11 @@ def auto_update(progress=None, flows_days: int = 10, now: Optional[datetime] = N
                                encoding="utf-8")
     existing = _read(config.PRICES_FILE)
     tickers = sorted(existing["ticker"].unique()) if existing is not None else list(config.CORE_UNIVERSE)
-    start = (existing["date"].min() if existing is not None else target - pd.DateOffset(years=3))
+    hist_start = pd.Timestamp(config.HISTORY_START)
+    have_start = existing["date"].min() if existing is not None else None
+    # 歷史還沒補到 HISTORY_START（例如原本只有 3 年）→ 這次把所有股票往前補；補過之後就只往後補
+    backfill = have_start is None or have_start > hist_start + pd.Timedelta(days=30)
+    start = hist_start if backfill else have_start
     out: Dict = {"target": str(target.date())}
     report = (lambda msg: progress(msg)) if progress else (lambda msg: None)
     if len(tickers) < config.UNIVERSE_SIZE * 0.9:
@@ -283,13 +301,13 @@ def auto_update(progress=None, flows_days: int = 10, now: Optional[datetime] = N
             out["universe"] = {"error": str(e)}
     try:
         report(f"股價：{len(tickers)} 檔補到 {target.date()}")
-        r = update_prices(tickers, start, target)
+        r = update_prices(tickers, start, target, backfill=backfill)
         out["prices"] = {"rows": r["rows_downloaded"], "failed": len(r["failed"])}
     except Exception as e:
         out["prices"] = {"error": str(e)}
     try:
         report("比較基準（加權指數、ETF）")
-        b = update_benchmarks(start, target)
+        b = update_benchmarks(start, target, backfill=backfill)
         out["benchmarks"] = {"rows": b["rows_downloaded"]}
     except Exception as e:
         out["benchmarks"] = {"error": str(e)}
@@ -300,7 +318,11 @@ def auto_update(progress=None, flows_days: int = 10, now: Optional[datetime] = N
         out["institutional"] = {"error": str(e)}
     try:
         report("本益比／淨值比／殖利率（月底）")
-        out["valuation"] = update_valuation(target - pd.DateOffset(months=2))
+        val = _read(config.VALUATION_FILE)
+        val_start = val["date"].min() if val is not None and not val.empty else None
+        # 估值歷史不足時從 HISTORY_START 開始補（每月一筆；被擋下就下次接著補）
+        need_hist = val_start is None or val_start > hist_start + pd.Timedelta(days=40)
+        out["valuation"] = update_valuation(hist_start if need_hist else target - pd.DateOffset(months=2))
     except Exception as e:
         out["valuation"] = {"error": str(e)}
     out["last_price_date"] = str(prices_last_date().date()) if prices_last_date() is not None else None

@@ -97,9 +97,29 @@ def slot_weights(top_n: int, scheme: str) -> np.ndarray:
     return w / w.sum()
 
 
-def make_weights(score: pd.Series, top_n: int, scheme: str, fill_cash: bool = False) -> pd.Series:
+def pick_top(score: pd.Series, top_n: int, industries: Optional[Dict[str, str]] = None,
+             max_per_industry: int = 0) -> pd.Series:
+    """依分數由高到低挑 top_n 檔；max_per_industry > 0 時，同一產業最多挑幾檔（沒有產業資料的不限制）。"""
+    ranked = score.dropna().sort_values(ascending=False)
+    if not max_per_industry or not industries:
+        return ranked.head(top_n)
+    keep, count = [], {}
+    for t in ranked.index:
+        ind = industries.get(t)
+        if ind and count.get(ind, 0) >= max_per_industry:
+            continue
+        keep.append(t)
+        if ind:
+            count[ind] = count.get(ind, 0) + 1
+        if len(keep) >= top_n:
+            break
+    return ranked.loc[keep]
+
+
+def make_weights(score: pd.Series, top_n: int, scheme: str, fill_cash: bool = False,
+                 industries: Optional[Dict[str, str]] = None, max_per_industry: int = 0) -> pd.Series:
     """fill_cash=True：合格股票不足 N 檔時，空下來的名額放現金（不把錢集中到少數幾檔）。"""
-    top = score.dropna().sort_values(ascending=False).head(top_n)
+    top = pick_top(score, top_n, industries, max_per_industry)
     if top.empty:
         return pd.Series(dtype=float)
     w = slot_weights(top_n if fill_cash else len(top), scheme)[:len(top)]

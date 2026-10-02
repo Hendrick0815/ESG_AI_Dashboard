@@ -39,6 +39,9 @@ BENCHMARK_NAMES = {
     "0056.TW": "元大高股息",
 }
 
+# 歷史資料起點：回測約從 2018 年底開始（前面約一年多留給模型訓練）
+HISTORY_START = "2017-08-01"
+
 # 股票池大小：近 20 個交易日平均成交金額最大的 N 檔上市櫃普通股（一定包含下面的核心 50 檔）
 UNIVERSE_SIZE = 300
 UNIVERSE_FILE = PROCESSED_DIR / "universe.csv"     # 最近一次選出的股票池（含平均成交金額）
@@ -86,5 +89,14 @@ MARKET_INDEX = "^TWII"          # ③ 大盤濾網：加權指數跌破年線 �
 MARKET_MA = 200
 MARKET_WEAK_EXPOSURE = 0.5
 EXPOSURE_STEP = 0.1             # 持股比例的最小調整單位
+
+# ---- 選股特徵與產業 ----
+# 2018-11～2026-10 回測、3 組隨機種子比較（單純 AI、等權 Top 20 年化）：
+#   原本特徵 100%｜＋見頂特徵 106%｜＋產業特徵 85%（2 組種子）｜兩者都加 72%（2 組）｜＋見頂＋只買產業趨勢向上 78%（1 組）
+#   ＋見頂＋同產業最多 5 檔 105%（最大回撤 −42%，不限制時 −47%）
+USE_PEAK_FEATURES = True        # 見頂訊號：距 20 日高點跌幅、高點距今天數、連續下跌天數、量能比、短期反轉
+USE_INDUSTRY_FEATURES = False   # 產業趨勢＋個股相對產業強弱當模型特徵：回測變差，預設不用
+MAX_PER_INDUSTRY = 5            # 同一產業最多持有幾檔（0 = 不限制）：報酬幾乎不變、回撤小約 5 個百分點
+INDUSTRY_TREND_FILTER = False   # True：只買所屬產業在季線之上的股票：回測變差，預設不用
 
 INSTITUTIONAL_FILE = PROCESSED_DIR / "institutional.csv"   # 三大法人買賣超（證交所 T86）

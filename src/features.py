@@ -13,9 +13,16 @@ import pandas as pd
 from . import config
 
 TECH_FEATURES = ["mom_5", "mom_20", "mom_60", "vol_20", "bias_20", "gap_ma60"]
+# 見頂訊號（區分「還在噴」和「已經見頂」的飆股）；缺值用訓練集中位數補，不會讓股票被排除
+PEAK_FEATURES = ["dd_high20", "days_since_high20", "down_streak", "vol_ratio", "reversal"]
+# 產業：產業本身的趨勢＋個股在產業裡的相對強弱
+INDUSTRY_FEATURES = ["ind_mom_20", "ind_gap_ma60", "rel_ind_mom_20"]
 TECH_LABELS = {
     "mom_5": "近 5 日報酬（動能）", "mom_20": "近 1 月報酬（動能）", "mom_60": "近 3 月報酬（動能）",
     "vol_20": "20 日年化波動率", "bias_20": "月線乖離率", "gap_ma60": "季線乖離率",
+    "dd_high20": "距 20 日最高價跌幅", "days_since_high20": "距 20 日最高價天數", "down_streak": "連續下跌天數",
+    "vol_ratio": "量能比（5 日均量 ÷ 60 日均量）", "reversal": "短期反轉（5 日 × 60 日報酬）",
+    "ind_mom_20": "產業近 1 月報酬", "ind_gap_ma60": "產業季線乖離", "rel_ind_mom_20": "個股相對產業近 1 月報酬",
     "pe": "本益比", "pb": "股價淨值比", "dividend_yield": "殖利率",
     "roe": "ROE", "roa": "ROA", "eps": "EPS", "debt_ratio": "負債比",
     "esg_total": "ESG 總分", "e_score": "E 分數", "s_score": "S 分數", "g_score": "G 分數",
@@ -31,11 +38,32 @@ def _roll(g, window: int, how: str, min_periods: Optional[int] = None) -> pd.Ser
     return getattr(r, how)().reset_index(level=0, drop=True)
 
 
+def _days_since_high(df: pd.DataFrame, window: int, min_periods: int) -> pd.Series:
+    """每檔股票：近 window 日最高收盤價是幾個交易日前（同價取最近一次）。向量化計算，比 rolling.apply 快很多。"""
+    out = np.full(len(df), np.nan)
+    close = df["close"].to_numpy(dtype=float)
+    starts = np.flatnonzero(np.r_[True, df["ticker"].to_numpy()[1:] != df["ticker"].to_numpy()[:-1]])
+    ends = np.r_[starts[1:], len(df)]
+    for s, e in zip(starts, ends):
+        c = close[s:e]
+        n = len(c)
+        if n < min_periods:
+            continue
+        pad = np.r_[np.full(window - 1, -np.inf), c]
+        win = np.lib.stride_tricks.sliding_window_view(pad, window)[:, ::-1]   # 每列：今天、昨天、…
+        res = np.argmax(win, axis=1).astype(float)
+        res[: min_periods - 1] = np.nan
+        out[s:e] = res
+    return pd.Series(out, index=df.index)
+
+
 def add_technical(prices: pd.DataFrame, hold_days: int) -> pd.DataFrame:
     """技術面特徵＋風險控制用的欄位。只用當天（含）以前的資料。"""
-    df = prices[["date", "ticker", "close"]].copy()
+    cols = ["date", "ticker", "close"] + (["volume"] if "volume" in prices.columns else [])
+    df = prices[cols].copy()
     df["date"] = pd.to_datetime(df["date"]).astype("datetime64[ns]")
-    df = df.dropna().sort_values(["ticker", "date"]).drop_duplicates(["ticker", "date"]).reset_index(drop=True)
+    df = df.dropna(subset=["date", "ticker", "close"]).sort_values(["ticker", "date"]) \
+           .drop_duplicates(["ticker", "date"]).reset_index(drop=True)
     g = df.groupby("ticker", group_keys=False)["close"]
     df["ret_1d"] = g.pct_change()
     for n in (5, 20, 60):
@@ -45,6 +73,20 @@ def add_technical(prices: pd.DataFrame, hold_days: int) -> pd.DataFrame:
     ma20, ma60 = _roll(g, 20, "mean"), _roll(g, 60, "mean")
     df["bias_20"] = df["close"] / ma20 - 1
     df["gap_ma60"] = df["close"] / ma60 - 1
+    # ---- 見頂訊號 ----
+    hi20 = _roll(g, 20, "max", 10)
+    df["dd_high20"] = df["close"] / hi20 - 1                       # 從近 20 日最高價回落多少（0 = 正在創高）
+    df["days_since_high20"] = _days_since_high(df, 20, 10)          # 高點是幾天前（越大代表漲勢停了越久）
+    down = (df["ret_1d"] < 0).astype(int)
+    grp = (down != down.groupby(df["ticker"]).shift()).cumsum()
+    df["down_streak"] = down.groupby([df["ticker"], grp]).cumsum().where(down == 1, 0)   # 連續下跌天數
+    if "volume" in df.columns:
+        vg = df.groupby("ticker")["volume"]
+        v60 = _roll(vg, 60, "mean", 40)
+        df["vol_ratio"] = (_roll(vg, 5, "mean") / v60.where(v60 > 0))  # >1 放量、<1 量縮
+    else:
+        df["vol_ratio"] = np.nan
+    df["reversal"] = df["mom_5"] * df["mom_60"]                     # 大漲後短線轉弱 → 負值
     # ---- 風險控制 ----
     # 個股長期趨勢：收盤價在年線（200 日均線）之上；上市不滿約 150 天無法判斷 → NaN（不排除）
     ma_long = _roll(g, config.STOCK_TREND_MA, "mean", int(config.STOCK_TREND_MA * 0.75))
@@ -111,9 +153,16 @@ def asof_merge(panel: pd.DataFrame, other: Optional[pd.DataFrame], cols: List[st
 
 
 def build_panel(prices: pd.DataFrame, esg: Optional[pd.DataFrame], financials: Optional[pd.DataFrame],
-                hold_days: int, static_esg: bool = False) -> Tuple[pd.DataFrame, dict]:
-    """回傳 (panel, info)。info 裡有各類特徵名稱與資料涵蓋率。"""
+                hold_days: int, static_esg: bool = False,
+                industries: Optional[Dict[str, str]] = None) -> Tuple[pd.DataFrame, dict]:
+    """回傳 (panel, info)。info 裡有各類特徵名稱與資料涵蓋率。industries：代號 → 產業（選股考慮產業時用）。"""
     panel = add_technical(prices, hold_days)
+    ind_features: List[str] = []
+    if industries:
+        panel = add_industry(panel, industries)
+        panel["rel_ind_mom_20"] = panel["mom_20"] - panel["ind_mom_20"]
+        if panel["ind_mom_20"].notna().any():
+            ind_features = list(INDUSTRY_FEATURES)
     fin_cols = numeric_cols(financials)
     esg_cols = [c for c in numeric_cols(esg) if c in config.ESG_COLS]
 
@@ -127,6 +176,7 @@ def build_panel(prices: pd.DataFrame, esg: Optional[pd.DataFrame], financials: O
     cov = float(panel["esg_total"].notna().mean()) if "esg_total" in panel.columns else 0.0
     info = {
         "tech_features": TECH_FEATURES,
+        "extra_features": [f for f in PEAK_FEATURES if f in panel.columns and panel[f].notna().any()] + ind_features,
         "fin_features": fin_cols,
         "esg_features": esg_cols,
         "esg_static": bool(esg_static),
