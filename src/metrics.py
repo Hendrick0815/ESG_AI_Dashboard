@@ -6,10 +6,12 @@
 - 年化波動 = 日報酬標準差 × √252
 - Sharpe   = (年化報酬 - 無風險利率) / 年化波動
 - 最大回撤 = 淨值相對歷史高點（含起始淨值 1）的最大跌幅
+- Beta     = 投組日超額報酬對大盤（^TWII）日超額報酬的迴歸斜率（超額 = 扣掉每日無風險利率）
+- 詹森 Alpha = 年化報酬 − [無風險利率 + Beta × (大盤年化報酬 − 無風險利率)]，只用投組與大盤都有資料的日子
 """
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -22,11 +24,13 @@ METRIC_LABELS = {
     "ann_vol": "年化波動",
     "sharpe": "Sharpe",
     "max_drawdown": "最大回撤",
+    "beta": "Beta",
+    "jensen_alpha": "詹森 Alpha",
     "daily_mean": "日報酬平均",
     "daily_var": "日報酬變異數",
     "n_days": "交易日數",
 }
-PCT_METRICS = {"cum_return", "ann_return", "ann_vol", "max_drawdown", "daily_mean"}
+PCT_METRICS = {"cum_return", "ann_return", "ann_vol", "max_drawdown", "daily_mean", "jensen_alpha"}
 
 
 def performance(returns: pd.Series, rf: float = config.RISK_FREE_RATE) -> Dict[str, float]:
@@ -46,17 +50,50 @@ def performance(returns: pd.Series, rf: float = config.RISK_FREE_RATE) -> Dict[s
         "ann_vol": float(ann_vol) if pd.notna(ann_vol) else np.nan,
         "sharpe": float(sharpe) if pd.notna(sharpe) else np.nan,
         "max_drawdown": mdd,
+        "beta": np.nan,
+        "jensen_alpha": np.nan,
         "daily_mean": float(r.mean()),
         "daily_var": float(r.var(ddof=1)) if len(r) > 1 else np.nan,
         "n_days": int(len(r)),
     }
 
 
+def _ann(r: pd.Series) -> float:
+    cum = float((1 + r).prod() - 1)
+    return (1 + cum) ** (config.TRADING_DAYS / len(r)) - 1 if cum > -1 else -1.0
+
+
+def capm(port: pd.Series, market: pd.Series, rf: float = config.RISK_FREE_RATE) -> Dict[str, float]:
+    """port、market：以日期為 index 的日報酬。回傳 beta 與年化詹森 Alpha。"""
+    df = pd.concat([port.rename("p"), market.rename("m")], axis=1).dropna()
+    if len(df) < 20 or df["m"].var() == 0:
+        return {"beta": np.nan, "jensen_alpha": np.nan}
+    rf_d = (1 + rf) ** (1 / config.TRADING_DAYS) - 1
+    ex_p, ex_m = df["p"] - rf_d, df["m"] - rf_d
+    beta = float(np.cov(ex_p, ex_m, ddof=1)[0, 1] / ex_m.var(ddof=1))
+    alpha = _ann(df["p"]) - (rf + beta * (_ann(df["m"]) - rf))
+    return {"beta": beta, "jensen_alpha": float(alpha)}
+
+
+def market_series(panel: pd.DataFrame) -> Optional[pd.Series]:
+    """詹森 Alpha 的市場基準：加權指數；沒有時依序用其他比較基準。"""
+    names = set(panel["portfolio"])
+    for m in [config.MARKET_INDEX, *config.BENCHMARKS]:
+        if m in names:
+            g = panel[panel["portfolio"] == m]
+            return g.set_index("date")["ret"].astype(float)
+    return None
+
+
 def performance_table(panel: pd.DataFrame, rf: float = config.RISK_FREE_RATE) -> pd.DataFrame:
-    """panel 欄位：date, portfolio, ret → 每個 portfolio 一列。"""
+    """panel 欄位：date, portfolio, ret → 每個 portfolio 一列（含相對加權指數的 Beta 與詹森 Alpha）。"""
     rows = []
+    mkt = market_series(panel) if not panel.empty else None
     for name, g in panel.groupby("portfolio", sort=False):
-        m = performance(g.sort_values("date")["ret"], rf)
+        g = g.sort_values("date")
+        m = performance(g["ret"], rf)
+        if mkt is not None:
+            m.update(capm(g.set_index("date")["ret"].astype(float), mkt, rf))
         m["portfolio"] = name
         rows.append(m)
     if not rows:

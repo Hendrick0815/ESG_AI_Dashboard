@@ -6,7 +6,7 @@
 雙擊 scripts/start_auto_push.bat 也可以；scripts/install_auto_push.bat 讓它開機登入後自動在背景執行。
 
 規則
-- 變動後等 60 秒沒有新的變動才發佈（Claude 一次改十幾個檔案時，不會推出改到一半的版本）。
+- 偵測到變動就立刻發佈（每 5 秒檢查一次）。
 - 有改到 .py：先跑 tests/test_core.py 和 tests/smoke_ui.py，任何一個失敗就不推，等下次有新變動再試。
 - 只改資料（股價 CSV 等）：不跑測試，直接推。
 - push 被拒（GitHub 上有比較新的版本）：先 git pull --rebase 再推一次。
@@ -26,8 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOG = ROOT / "data" / "processed" / "auto_push.log"
-QUIET_SECONDS = 60      # 最後一次變動後要安靜多久才發佈
-POLL_SECONDS = 15
+POLL_SECONDS = 5
 TESTS = ["tests/test_core.py", "tests/smoke_ui.py"]
 # 有 GitHub Actions 每日更新時，資料一律以 GitHub 上的為準：本機抓的股價、回測存檔不推，避免兩邊衝突
 CLOUD_DATA = (ROOT / ".github" / "workflows" / "daily_update.yml").exists()
@@ -107,12 +106,15 @@ def publish(files: list[str]) -> bool:
         for d in DATA_PATHS:                      # 分開做：某個資料夾還沒被 git 追蹤時不會讓另一個失敗
             if (ROOT / d).exists():
                 git("checkout", "--", d)
+                # 本機才有、GitHub 上後來新增的資料檔（例如 institutional.csv）會擋住 pull，
+                # 一併刪掉改用 GitHub 的版本（.gitignore 裡的檔案，例如 auto_push.log，不受影響）
+                git("clean", "-fq", "--", d)
         if (ROOT / "outputs" / "cache").exists():
             git("clean", "-fq", "--", "outputs/cache/")
     pull = git("pull", "--rebase", "--autostash")
     if pull.returncode != 0:
         git("rebase", "--abort")
-        log(f"  ✗ 無法和 GitHub 上的版本合併，請用 GitHub Desktop 處理：{(pull.stderr or pull.stdout).strip()[:300]}")
+        log(f"  ✗ 無法和 GitHub 上的版本合併，請用 GitHub Desktop 處理：{(pull.stderr or pull.stdout).strip()[-600:]}")
         return False
     if CLOUD_DATA:
         git("add", "-A", "--", ".", *[f":(exclude){p}" for p in DATA_PATHS], check=True)
@@ -129,7 +131,7 @@ def publish(files: list[str]) -> bool:
         pull = git("pull", "--rebase", "--autostash")
         if pull.returncode != 0:
             git("rebase", "--abort")
-            log(f"  ✗ 無法自動合併，請用 GitHub Desktop 處理：{(pull.stderr or pull.stdout).strip()[:300]}")
+            log(f"  ✗ 無法自動合併，請用 GitHub Desktop 處理：{(pull.stderr or pull.stdout).strip()[-600:]}")
             return False
         r = git("push")
     if r.returncode != 0:
@@ -142,7 +144,6 @@ def publish(files: list[str]) -> bool:
 def main() -> None:
     ap = argparse.ArgumentParser(description="檔案有變動就測試並推到 GitHub")
     ap.add_argument("--once", action="store_true", help="只檢查一次")
-    ap.add_argument("--quiet", type=int, default=QUIET_SECONDS, help="變動後等幾秒沒有新變動才發佈")
     args = ap.parse_args()
 
     if git("rev-parse", "--is-inside-work-tree").returncode != 0:
@@ -167,21 +168,16 @@ def main() -> None:
     except OSError:
         log("已經有一個自動發佈程式在執行，這個視窗不需要再開。")
         return
-    log(f"開始監看 {ROOT}（變動後安靜 {args.quiet} 秒就發佈；Ctrl+C 結束）")
-    last_sig, since, failed_sig = None, 0.0, None
+    log(f"開始監看 {ROOT}（偵測到變動就發佈；Ctrl+C 結束）")
+    failed_sig = None
     while True:
         try:
             files = pending_changes()
             sig = signature(files) if files else None
-            if sig is None:
-                last_sig = None
-            elif sig != last_sig:
-                last_sig, since = sig, time.time()
-                log(f"偵測到 {len(files)} 個變動檔案，等 {args.quiet} 秒確定沒有其他變動 …")
-            elif sig != failed_sig and time.time() - since >= args.quiet:
-                log("開始發佈")
+            if sig is not None and sig != failed_sig:
+                log(f"偵測到 {len(files)} 個變動檔案，開始發佈")
                 if publish(files):
-                    last_sig = failed_sig = None
+                    failed_sig = None
                 else:
                     failed_sig = sig          # 測試失敗：同樣的內容不重試，等下一次變動
         except KeyboardInterrupt:

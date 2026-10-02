@@ -32,7 +32,7 @@ def main() -> None:
     ap.add_argument("--top-n", type=int, default=config.DEFAULT_TOP_N)
     ap.add_argument("--trees", type=int, default=config.DEFAULT_N_ESTIMATORS)
     ap.add_argument("--esg-weight", type=float, default=config.DEFAULT_ESG_WEIGHT)
-    ap.add_argument("--weighting", choices=["等權", "集中加權"], default="等權")
+    ap.add_argument("--weighting", choices=["等權", "集中加權"], default=config.DEFAULT_WEIGHTING)
     ap.add_argument("--static-esg", action="store_true", help="用最新 ESG 回填歷史（有前視偏差）")
     args = ap.parse_args()
 

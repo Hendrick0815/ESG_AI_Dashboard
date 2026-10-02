@@ -345,7 +345,7 @@ def test_last_close_date_and_consecutive_day_updates():
 
 def test_risk_control_in_pipeline():
     ds = _demo()
-    on = run(ds, Params(top_n=3, n_estimators=20))
+    on = run(ds, Params(top_n=3, n_estimators=20, risk_control=True))
     off = run(ds, Params(top_n=3, n_estimators=20, risk_control=False))
     assert bt.STRATEGY_AI in set(on.returns["portfolio"])
     assert not on.risk_log.empty and on.risk_log["exposure"].between(0, 1 + 1e-9).all()
@@ -364,3 +364,29 @@ if __name__ == "__main__":
                 print("FAIL", name, "→", repr(e))
     print("\n全部通過" if not failed else f"\n{failed} 個失敗")
     sys.exit(1 if failed else 0)
+
+
+def test_capm_alpha_beta():
+    idx = pd.bdate_range("2024-01-01", periods=300)
+    rng = np.random.default_rng(0)
+    m = pd.Series(rng.normal(0.001, 0.01, len(idx)), index=idx)
+    port = 2 * m                                    # 純粹放大大盤 2 倍 → beta 2
+    out = metrics.capm(port, m, rf=0.0)
+    assert abs(out["beta"] - 2) < 1e-9
+    same = metrics.capm(m, m, rf=0.01)
+    assert abs(same["beta"] - 1) < 1e-9 and abs(same["jensen_alpha"]) < 1e-9
+    panel = pd.concat([pd.DataFrame({"date": idx, "portfolio": "^TWII", "ret": m.values}),
+                       pd.DataFrame({"date": idx, "portfolio": "X", "ret": (m + 0.0005).values})])
+    tbl = metrics.performance_table(panel).set_index("portfolio")
+    assert tbl.loc["X", "jensen_alpha"] > 0 and abs(tbl.loc["^TWII", "jensen_alpha"]) < 1e-9
+
+
+def test_parse_trading_value():
+    twse_payload = {"tables": [{"fields": ["證券代號", "證券名稱", "成交股數", "成交金額"],
+                                "data": [["2330", "台積電", "1,000", "2,500,000"], ["00400A", "ETF", "1", "9,999,999"]]}]}
+    tpex_payload = {"tables": [{"fields": ["代號", "名稱", "收盤", "成交金額(元)"],
+                                "data": [["8299", "群聯", "2,000", "1,234"]]}]}
+    a = twse.parse_trading_value(twse_payload, pd.Timestamp("2026-09-18"), ".TW")
+    b = twse.parse_trading_value(tpex_payload, pd.Timestamp("2026-09-18"), ".TWO")
+    assert a["ticker"].tolist() == ["2330.TW"] and a["trade_value"].iloc[0] == 2_500_000
+    assert b["ticker"].tolist() == ["8299.TWO"] and b["trade_value"].iloc[0] == 1234

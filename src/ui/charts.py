@@ -9,9 +9,18 @@ import plotly.graph_objects as go
 
 from ..backtest import STRATEGIES
 
-# 三個策略用分類色第 1–3 格；比較基準一律灰階＋虛線（以線型區分，不佔用彩色）
+# 三個策略：實線＋分類色第 1–3 格。比較基準：各自固定的顏色＋不同虛線樣式，
+# 顏色和線型同時不同，四條 ETF／指數線即使交錯也分得出來（色盲或黑白列印時靠線型區分）。
 STRATEGY_COLORS = {"AI+ESG": "#2a78d6", "單純 AI": "#eb6834", "單純 ESG": "#1baf7a"}
-BENCH_GRAYS = ["#52514e", "#8a8984", "#6f6e69", "#a3a29c", "#3f3e3b"]
+BENCH_STYLES = {
+    "^TWII":    ("#3f3e3b", "solid"),      # 加權指數：深灰實線（細），當作大盤參考線
+    "0050.TW":  ("#4a3aa7", "dash"),       # 元大台灣50：紫
+    "00850.TW": ("#e87ba4", "dashdot"),    # 元大臺灣ESG永續：粉
+    "00878.TW": ("#eda100", "dot"),        # 國泰永續高股息：琥珀
+    "0056.TW":  ("#008300", "longdash"),
+}
+BENCH_FALLBACK = [("#8a8984", "dash"), ("#6f6e69", "dot"), ("#a3a29c", "dashdot"), ("#52514e", "longdash")]
+BENCH_GRAYS = [c for c, _ in BENCH_FALLBACK]
 SERIES_PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
 UP, DOWN = "#e34948", "#008300"   # 台股：紅漲綠跌
 GRID = "rgba(128,128,128,0.18)"
@@ -35,31 +44,42 @@ def _layout(fig: go.Figure, title: str = "", height: int = 420, y_title: str = "
     return fig
 
 
-def color_map(names) -> Dict[str, str]:
+def style_map(names) -> Dict[str, tuple]:
+    """名稱 → (顏色, 線型, 線寬)。策略為實線粗線；比較基準為固定顏色＋各自的虛線樣式。"""
     m, g = {}, 0
     for n in names:
         if n in STRATEGY_COLORS:
-            m[n] = STRATEGY_COLORS[n]
+            m[n] = (STRATEGY_COLORS[n], "solid", 2.4)
+        elif n in BENCH_STYLES:
+            c, d = BENCH_STYLES[n]
+            m[n] = (c, d, 1.4 if n == "^TWII" else 1.8)
         else:
-            m[n] = BENCH_GRAYS[g % len(BENCH_GRAYS)]
+            c, d = BENCH_FALLBACK[g % len(BENCH_FALLBACK)]
+            m[n] = (c, d, 1.8)
             g += 1
     return m
+
+
+def color_map(names) -> Dict[str, str]:
+    return {n: v[0] for n, v in style_map(names).items()}
 
 
 def nav_chart(returns: pd.DataFrame, labels: Optional[Dict[str, str]] = None, title: str = "累積淨值") -> go.Figure:
     labels = labels or {}
     df = returns.sort_values("date")
-    order = [s for s in STRATEGIES if s in set(df["portfolio"])] + \
-            [p for p in df["portfolio"].unique() if p not in STRATEGIES]
-    cmap = color_map(order)
+    from .. import config
+    rest = [p for p in df["portfolio"].unique() if p not in STRATEGIES]
+    rest.sort(key=lambda p: config.BENCHMARKS.index(p) if p in config.BENCHMARKS else 99)   # 基準固定順序
+    order = [s for s in STRATEGIES if s in set(df["portfolio"])] + rest
+    smap = style_map(order)
     fig = go.Figure()
     for p in order:
         g = df[df["portfolio"] == p]
         nav = (1 + g["ret"].fillna(0)).cumprod()
-        is_bench = p not in STRATEGIES
+        c, dash, width = smap[p]
         fig.add_trace(go.Scatter(
             x=g["date"], y=nav, mode="lines", name=labels.get(p, p),
-            line=dict(color=cmap[p], width=2, dash="dot" if is_bench else "solid"),
+            line=dict(color=c, width=width, dash=dash),
             hovertemplate="%{y:.3f}",
         ))
     fig.add_hline(y=1, line=dict(color=GRID, width=1))
@@ -70,11 +90,12 @@ def drawdown_chart(returns: pd.DataFrame, labels: Optional[Dict[str, str]] = Non
     from ..metrics import drawdown_series
     labels = labels or {}
     df = returns.sort_values("date")
-    cmap = color_map(df["portfolio"].unique())
+    smap = style_map(df["portfolio"].unique())
     fig = go.Figure()
     for p, g in df.groupby("portfolio", sort=False):
+        c, dash, width = smap[p]
         fig.add_trace(go.Scatter(x=g["date"], y=drawdown_series(g["ret"]), mode="lines", name=labels.get(p, p),
-                                 line=dict(color=cmap[p], width=2, dash="solid" if p in STRATEGIES else "dot"),
+                                 line=dict(color=c, width=width, dash=dash),
                                  hovertemplate="%{y:.1%}"))
     return _layout(fig, "回撤（相對歷史高點）", height=320, pct_y=True)
 
@@ -209,4 +230,4 @@ def rank_ic_chart(ic: pd.DataFrame) -> go.Figure:
 
 
 __all__ = ["nav_chart", "drawdown_chart", "exposure_chart", "industry_bar", "risk_return_scatter", "price_chart", "line_chart", "histogram",
-           "bar_h", "esg_radar", "scatter_peers", "rank_ic_chart", "STRATEGY_COLORS", "px"]
+           "bar_h", "esg_radar", "scatter_peers", "rank_ic_chart", "STRATEGY_COLORS", "style_map", "px"]

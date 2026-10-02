@@ -16,7 +16,7 @@ from . import config
 
 log = logging.getLogger(__name__)
 
-CACHE_VERSION = "2026-09-29c-riskrules"   # 回測邏輯有改時換掉，舊存檔就不會被用到
+CACHE_VERSION = "2026-10-02-u300-alpha"   # 回測邏輯有改時換掉，舊存檔就不會被用到
 KEEP_FILES = 30
 
 

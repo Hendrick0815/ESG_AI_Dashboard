@@ -271,6 +271,16 @@ def auto_update(progress=None, flows_days: int = 10, now: Optional[datetime] = N
     start = (existing["date"].min() if existing is not None else target - pd.DateOffset(years=3))
     out: Dict = {"target": str(target.date())}
     report = (lambda msg: progress(msg)) if progress else (lambda msg: None)
+    if len(tickers) < config.UNIVERSE_SIZE * 0.9:
+        # 股票池比設定小很多（例如原本只有 50 檔）→ 自動擴充到成交金額前 N 大，新股票會補抓完整歷史
+        try:
+            report(f"股票池只有 {len(tickers)} 檔，擴充到成交金額前 {config.UNIVERSE_SIZE} 大")
+            listing = _read(config.LISTING_FILE, date_cols=())
+            top = top_universe(listing if listing is not None else pd.DataFrame(columns=["ticker"]))
+            tickers = sorted(set(tickers) | set(top))
+            out["universe"] = len(tickers)
+        except Exception as e:
+            out["universe"] = {"error": str(e)}
     try:
         report(f"股價：{len(tickers)} 檔補到 {target.date()}")
         r = update_prices(tickers, start, target)
@@ -305,8 +315,28 @@ def append_update_log(record: Dict) -> None:
     write_csv(pd.concat([x for x in [old, row] if x is not None], ignore_index=True), config.UPDATE_LOG_FILE)
 
 
-def pick_universe(kind: str, listing: pd.DataFrame, max_n: int | None) -> list[str]:
-    """core = 市值前 50 大；tej = 所有有 TEJ 評等的普通股；all = 全部上市櫃普通股。"""
+def top_universe(listing: pd.DataFrame, n: int = config.UNIVERSE_SIZE, days: int = 20, progress=None) -> list[str]:
+    """近 days 個交易日平均成交金額最大的 n 檔普通股（核心 50 檔一定納入）；結果存到 universe.csv。"""
+    from .crawlers import twse
+    rank = twse.rank_by_trading_value(last_close_date(), days=days, progress=progress)
+    if not listing.empty:                    # 只留普通股（排除 ETF、特別股、TDR）
+        rank = rank[rank["ticker"].isin(set(listing["ticker"]))]
+    if len(rank) < n:
+        raise RuntimeError(f"成交金額排名只拿到 {len(rank)} 檔，可能被證交所擋下，請稍後再試。")
+    core = [t for t in config.CORE_UNIVERSE]
+    rest = [t for t in rank["ticker"] if t not in set(core)]
+    tickers = core + rest[:max(n - len(core), 0)]
+    out = rank[rank["ticker"].isin(tickers)].copy()
+    out["rank"] = range(1, len(out) + 1)
+    write_csv(out, config.UNIVERSE_FILE)
+    return tickers
+
+
+def pick_universe(kind: str, listing: pd.DataFrame, max_n: int | None, progress=None) -> list[str]:
+    """top = 近 20 日成交金額前 300 大（預設）；core = 市值前 50 大；
+    tej = 所有有 TEJ 評等的普通股；all = 全部上市櫃普通股。"""
+    if kind == "top":
+        return top_universe(listing, max_n or config.UNIVERSE_SIZE, progress=progress)
     if kind == "core" or (listing.empty and kind == "all"):
         tickers = list(config.CORE_UNIVERSE)
     elif kind == "all":

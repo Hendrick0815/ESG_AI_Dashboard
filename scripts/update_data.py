@@ -3,9 +3,9 @@
 用法（在專案根目錄）：
     py scripts/update_data.py --auto                # 每日自動更新：補到最近收盤日（排程用，約 1 分鐘）
     py scripts/update_data.py --flows               # 回補三大法人買賣超（第一次約 40 分鐘，可中斷續抓）
-    python scripts/update_data.py                   # 市值前 50 大 + 比較基準，回看 3 年
+    python scripts/update_data.py                   # 成交金額前 300 大 + 比較基準，回看 3 年（第一次約 10 分鐘）
+    python scripts/update_data.py --universe core   # 只抓市值前 50 大
     python scripts/update_data.py --universe tej    # 所有有 TEJ ESG 評等的上市櫃股票
-    python scripts/update_data.py --universe all --max 300
     python scripts/update_data.py --skip-valuation  # 不抓本益比等估值（比較快）
 第二次以後執行只會補抓缺少的日期。
 """
@@ -50,8 +50,8 @@ def main() -> None:
                     help="三大法人從哪天開始回補（預設：回測開始前一個月，約股價資料起點後 16 個月）")
     ap.add_argument("--start", default=(today - pd.DateOffset(years=3)).strftime("%Y-%m-%d"))
     ap.add_argument("--end", default=today.strftime("%Y-%m-%d"))
-    ap.add_argument("--universe", choices=["core", "tej", "all"], default="core")
-    ap.add_argument("--max", type=int, default=None, help="最多抓幾檔")
+    ap.add_argument("--universe", choices=["top", "core", "tej", "all"], default="top")
+    ap.add_argument("--max", type=int, default=None, help=f"最多抓幾檔（top 預設 {config.UNIVERSE_SIZE}）")
     ap.add_argument("--skip-listing", action="store_true")
     ap.add_argument("--skip-valuation", action="store_true")
     args = ap.parse_args()
@@ -79,7 +79,10 @@ def main() -> None:
     if listing.empty and config.LISTING_FILE.exists():
         listing = store._read(config.LISTING_FILE, date_cols=())
 
-    tickers = store.pick_universe(args.universe, listing, args.max)
+    if args.universe == "top":
+        print(f"   依近 20 個交易日平均成交金額挑前 {args.max or config.UNIVERSE_SIZE} 檔（約 2 分鐘）...")
+    tickers = store.pick_universe(args.universe, listing, args.max,
+                                  progress=lambda i, n, d: print(f"   成交金額 {i}/{n} {d.date()}", end="\r"))
     print(f"② 更新 {len(tickers)} 檔股價（Yahoo Finance，增量）...")
     r = store.update_prices(tickers, args.start, args.end,
                             progress=lambda i, n, phase: print(f"   {phase} {i}/{n}      ", end="\r"))

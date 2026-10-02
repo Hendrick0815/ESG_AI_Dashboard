@@ -197,7 +197,7 @@ if __name__ == "__main__":
     cases = [
         ("app.py", demo), ("pages/1_策略回測.py", demo), ("pages/2_個股分析.py", demo),
         ("pages/3_模型解釋.py", demo), ("pages/4_產業與籌碼.py", demo),
-        ("pages/1_策略回測.py", {**demo, "風險控制（降低最大回撤）": False}),
+        ("pages/1_策略回測.py", {**demo, "風險控制（降低最大回撤，報酬會變低）": True}),
         ("pages/1_策略回測.py", {**demo, "期間": "自訂"}),
         ("pages/1_策略回測.py", {**demo, "權重方式": "集中加權"}),
         ("pages/2_個股分析.py", {**demo, "K 線圖": True, "期間": "3 個月"}),

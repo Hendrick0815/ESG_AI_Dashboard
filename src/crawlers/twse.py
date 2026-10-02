@@ -4,6 +4,7 @@
   用 CFICode = ESVUFR 只留普通股，排除 ETF、權證、特別股、TDR。
 - 估值：https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d（可查歷史任一交易日，僅上市）
 - 三大法人買賣超：https://www.twse.com.tw/rwd/zh/fund/T86（每日，僅上市）
+- 每日成交金額（選股票池用）：上市 MI_INDEX（type=ALLBUT0999）、上櫃 tpex dailyQuotes
 解析函式（parse_*）和抓取分開，方便用離線資料測試。
 """
 from __future__ import annotations
@@ -23,6 +24,8 @@ log = logging.getLogger(__name__)
 ISIN_URL = "https://isin.twse.com.tw/isin/C_public.jsp?strMode={mode}"
 BWIBBU_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d"
 T86_URL = "https://www.twse.com.tw/rwd/zh/fund/T86"
+MI_INDEX_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
+TPEX_QUOTES_URL = "https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes"
 FLOW_COLS = ["date", "ticker", "foreign_net", "trust_net", "dealer_net", "total_net"]
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                          "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
@@ -218,3 +221,75 @@ def fetch_t86_series(dates: List[pd.Timestamp], sleep: float = 3.0, progress=Non
     if not frames:
         return pd.DataFrame(columns=FLOW_COLS)
     return pd.concat(frames, ignore_index=True)
+
+
+# ------------------------------------------------------------------ 每日成交金額（選股票池）
+def _value_table(tables: list, code_key: str, value_key: str) -> Optional[pd.DataFrame]:
+    for t in tables or []:
+        fields = [str(f) for f in (t.get("fields") or [])]
+        code_c = next((f for f in fields if code_key in f), None)
+        value_c = next((f for f in fields if value_key in f), None)
+        if code_c and value_c and t.get("data"):
+            df = pd.DataFrame(t["data"], columns=fields)
+            return pd.DataFrame({"code": df[code_c].astype(str).str.strip(),
+                                 "trade_value": to_number(df[value_c])})
+    return None
+
+
+def parse_trading_value(payload: dict, date: pd.Timestamp, suffix: str) -> pd.DataFrame:
+    """MI_INDEX（上市）或 dailyQuotes（上櫃）JSON → date, ticker, trade_value（元）。只留 4 碼代號。"""
+    cols = ["date", "ticker", "trade_value"]
+    if not payload:
+        return pd.DataFrame(columns=cols)
+    code_key = "證券代號" if suffix == ".TW" else "代號"
+    df = _value_table(payload.get("tables"), code_key, "成交金額")
+    if df is None or df.empty:
+        return pd.DataFrame(columns=cols)
+    df = df[df["code"].str.fullmatch(r"\d{4}")].copy()
+    df["ticker"] = df["code"] + suffix
+    df["date"] = pd.Timestamp(date).normalize()
+    return df[cols].reset_index(drop=True)
+
+
+def fetch_trading_value(date: pd.Timestamp) -> pd.DataFrame:
+    """某交易日全部上市＋上櫃股票的成交金額。非交易日回傳空表。"""
+    d = pd.Timestamp(date)
+    frames = []
+    r = _get(MI_INDEX_URL, params={"date": d.strftime("%Y%m%d"), "type": "ALLBUT0999", "response": "json"})
+    try:
+        frames.append(parse_trading_value(r.json(), d, ".TW"))
+    except ValueError:
+        pass
+    try:
+        r = _get(TPEX_QUOTES_URL, params={"date": d.strftime("%Y/%m/%d"), "response": "json"})
+        frames.append(parse_trading_value(r.json(), d, ".TWO"))
+    except Exception as e:          # 上櫃抓不到時仍可只用上市
+        log.warning("上櫃成交金額抓取失敗 %s：%s", d.date(), e)
+    frames = [f for f in frames if not f.empty]
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["date", "ticker", "trade_value"])
+
+
+def rank_by_trading_value(end: pd.Timestamp, days: int = 20, sleep: float = 4.0, progress=None) -> pd.DataFrame:
+    """往回找 days 個交易日，計算每檔平均成交金額 → ticker, avg_value, n_days（由大到小）。"""
+    frames, d, tries = [], pd.Timestamp(end).normalize(), 0
+    while len(frames) < days and tries < days * 2 + 10:
+        if d.weekday() < 5:
+            try:
+                df = fetch_trading_value(d)
+            except PermissionError:
+                if len(frames) >= 5:      # 被證交所限流：已有 5 天以上就用現有的平均
+                    log.warning("證交所限流，改用已抓到的 %d 個交易日", len(frames))
+                    break
+                raise
+            if not df.empty:
+                frames.append(df)
+                if progress:
+                    progress(len(frames), days, d)
+            time.sleep(sleep)
+        d -= pd.Timedelta(days=1)
+        tries += 1
+    if not frames:
+        return pd.DataFrame(columns=["ticker", "avg_value", "n_days"])
+    allv = pd.concat(frames, ignore_index=True)
+    out = allv.groupby("ticker")["trade_value"].agg(avg_value="mean", n_days="size").reset_index()
+    return out.sort_values("avg_value", ascending=False).reset_index(drop=True)

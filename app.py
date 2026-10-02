@@ -38,10 +38,11 @@ with st.expander("📦 資料狀態與更新", expanded=ds.prices.empty):
                     "想在不開網頁時也自動更新，雙擊 `scripts/install_schedule.bat` 建立平日 14:45 的排程。")
         st.markdown("**手動更新／換股票池**（只補抓缺少的日期；也可以在終端機執行 `py scripts/update_data.py`）")
         u1, u2, u3 = st.columns([1, 1, 1])
-        universe = u1.selectbox("股票池", ["core", "tej"], format_func={
+        universe = u1.selectbox("股票池", ["top", "core", "tej"], format_func={
+            "top": f"成交金額前 {config.UNIVERSE_SIZE} 大（第一次約 10 分鐘）",
             "core": "市值前 50 大（約 1 分鐘）", "tej": "所有有 TEJ 評等的股票（約 1,900 檔，10 分鐘以上）"}.get)
-        if universe == "tej":
-            st.caption("⚠️ 檔數多時建議改在終端機執行 `py scripts/update_data.py --universe tej`："
+        if universe in ("top", "tej"):
+            st.caption(f"⚠️ 檔數多時建議改在終端機執行 `py scripts/update_data.py --universe {universe}`："
                        "網頁更新期間不能切換頁面，否則會中斷。")
         years = u2.slider("回看年數", 1, 5, 3)
         do_val = u3.checkbox("一併抓本益比／淨值比／殖利率", value=True, help="每月一筆，約 3 秒一個月")
@@ -98,7 +99,7 @@ show_notes([n for n in res.notes if n not in ds.notes])
 st.subheader(f"🗓️ 最新選股（{res.latest_date:%Y-%m-%d} 收盤後）")
 st.caption(f"樣本外回測期間：{res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}｜每月調倉｜"
            f"{params.weighting}｜Top {params.top_n}｜模型 {params.model_name}｜"
-           f"{'風險控制：避開跌破年線與最震盪的股票、大盤跌破年線持股減半' if params.risk_control else '未做風險控制'}")
+           f"{'風險控制：避開跌破年線與最震盪的股票、大盤跌破年線持股減半' if params.risk_control else '目標最高報酬（不做風險控制）'}")
 
 perf = res.perf.set_index("portfolio")
 cards = []

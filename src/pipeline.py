@@ -20,12 +20,12 @@ class Params:
     top_n: int = config.DEFAULT_TOP_N
     n_estimators: int = config.DEFAULT_N_ESTIMATORS
     esg_weight: float = config.DEFAULT_ESG_WEIGHT
-    weighting: str = "等權"                  # 等權 / 集中加權
+    weighting: str = config.DEFAULT_WEIGHTING  # 等權 / 集中加權
     static_esg: bool = False                 # True = 用最新 ESG 回填過去（有前視偏差，僅供對照）
     start: Optional[str] = None
     end: Optional[str] = None
     tickers: Optional[tuple] = None          # None = 使用資料裡全部股票
-    risk_control: bool = True                # 不買跌破年線／最震盪的股票＋大盤跌破年線持股減半
+    risk_control: bool = config.DEFAULT_RISK_CONTROL   # True：不買跌破年線／最震盪的股票＋大盤跌破年線持股減半
 
     @property
     def hold_days(self) -> int:

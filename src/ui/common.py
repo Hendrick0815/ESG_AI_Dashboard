@@ -101,17 +101,17 @@ def sidebar_strategy(ds: store.Dataset) -> Params:
         top_n = _keep("top_n", st.slider("每次持有檔數（Top N）", 3, 30, _remember("top_n", config.DEFAULT_TOP_N)))
         w_opts = ["等權", "集中加權"]
         weighting = _keep("weighting", st.radio("權重方式", w_opts, horizontal=True,
-                                                index=w_opts.index(_remember("weighting", "等權")),
+                                                index=w_opts.index(_remember("weighting", config.DEFAULT_WEIGHTING)),
                                                 help="集中加權：第 1 名 30%，前 5 名約 69%（原 generate_backtest.py 的做法）"))
         esg_w = _keep("esg_w", st.slider("AI+ESG 中 ESG 的比重", 0.0, 1.0, _remember("esg_w", config.DEFAULT_ESG_WEIGHT), 0.05,
                                          help="混合分數 =（1−比重）× AI 預測排名 ＋ 比重 × ESG 排名"))
         st.caption("每月最後一個交易日調倉；已扣交易成本（手續費 0.1425%、賣出證交稅 0.3%）")
         risk_on = _keep("risk_on", st.checkbox(
-            "風險控制（降低最大回撤）", _remember("risk_on", True),
+            "風險控制（降低最大回撤，報酬會變低）", _remember("risk_on", config.DEFAULT_RISK_CONTROL),
             help="① 不買跌破年線（200 日均線）的股票\n\n"
                  "② 不買近 60 日波動最高的 20% 股票\n\n"
                  "③ 加權指數跌破年線時持股減半，站回年線恢復滿倉\n\n"
-                 "取消勾選可以和不做風險控制的結果比較。"))
+                 "預設關閉（以最高報酬為目標）；勾選可以比較降低回撤後的結果。"))
         with st.expander("進階"):
             trees = _keep("trees", st.slider("樹的數量", 50, 500, _remember("trees", config.DEFAULT_N_ESTIMATORS), 50))
             static_esg = _keep("static_esg", st.checkbox(
