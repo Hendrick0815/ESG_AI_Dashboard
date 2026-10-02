@@ -3,7 +3,7 @@
     python scripts/run_backtest.py
     python scripts/run_backtest.py --demo sample_1y --top-n 3
     python scripts/run_backtest.py --model XGBoost --weighting 集中加權
-（固定每月調倉、扣交易成本）
+（固定每 10 個交易日調倉、扣交易成本）
 輸出在 outputs/：strategy_returns.csv、performance.csv、holdings.csv、latest_picks.csv
 """
 from __future__ import annotations

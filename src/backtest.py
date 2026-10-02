@@ -26,20 +26,12 @@ STRATEGY_DESC = {
 
 
 # ------------------------------------------------------------------ 調倉日
-def rebalance_schedule(trading_days: pd.DatetimeIndex, first_allowed: pd.Timestamp) -> List[pd.Timestamp]:
-    """每月調倉：每個月最後一個交易日。"""
+def rebalance_schedule(trading_days: pd.DatetimeIndex, first_allowed: pd.Timestamp,
+                       every: int = config.HOLD_DAYS) -> List[pd.Timestamp]:
+    """固定每 every 個交易日調倉一次（預設 10 天），從 first_allowed 起算。
+    起點由資料開頭決定，資料變長時過去的調倉日不會移動。"""
     days = trading_days[trading_days >= first_allowed]
-    if len(days) == 0:
-        return []
-    s = pd.Series(days, index=days)
-    last_in_month = s.groupby(days.to_period("M")).max()
-    # 資料的最後一個月通常還沒結束，不當作調倉日
-    out = [pd.Timestamp(x) for x in last_in_month.values]
-    last = pd.Timestamp(trading_days[-1])
-    month_finished = (last + pd.offsets.BDay(1)).month != last.month
-    if out and out[-1] == last and not month_finished:
-        out = out[:-1]
-    return out
+    return [pd.Timestamp(d) for d in days[::max(1, every)]]
 
 
 # ------------------------------------------------------------------ 選股分數
@@ -127,7 +119,7 @@ def trading_cost(old: pd.Series, new: pd.Series) -> float:
 
 @dataclass
 class RiskControl:
-    """大盤濾網（每天收盤檢查；選股仍是每月一次）：
+    """大盤濾網（每天收盤檢查；選股仍是每 10 個交易日一次）：
     market_exposure[d] = 當天收盤後應有的持股比例（加權指數在年線上 1.0，跌破年線 0.5）。
     只調整持股比例、不在月中換股；比例以 step 為單位調整。"""
     market_exposure: Optional[pd.Series] = None

@@ -29,7 +29,7 @@ class Params:
 
     @property
     def hold_days(self) -> int:
-        return config.HOLD_DAYS            # 固定每月調倉
+        return config.HOLD_DAYS            # 固定每 10 個交易日調倉
 
 
 @dataclass

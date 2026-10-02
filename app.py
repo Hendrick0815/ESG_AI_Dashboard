@@ -97,7 +97,7 @@ labels = portfolio_labels(names)
 show_notes([n for n in res.notes if n not in ds.notes])
 
 st.subheader(f"🗓️ 最新選股（{res.latest_date:%Y-%m-%d} 收盤後）")
-st.caption(f"樣本外回測期間：{res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}｜每月調倉｜"
+st.caption(f"樣本外回測期間：{res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}｜每 {config.HOLD_DAYS} 個交易日調倉｜"
            f"{params.weighting}｜Top {params.top_n}｜模型 {params.model_name}｜"
            f"{'風險控制：避開跌破年線與最震盪的股票、大盤跌破年線持股減半' if params.risk_control else '目標最高報酬（不做風險控制）'}")
 

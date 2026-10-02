@@ -105,7 +105,7 @@ def sidebar_strategy(ds: store.Dataset) -> Params:
                                                 help="集中加權：第 1 名 30%，前 5 名約 69%（原 generate_backtest.py 的做法）"))
         esg_w = _keep("esg_w", st.slider("AI+ESG 中 ESG 的比重", 0.0, 1.0, _remember("esg_w", config.DEFAULT_ESG_WEIGHT), 0.05,
                                          help="混合分數 =（1−比重）× AI 預測排名 ＋ 比重 × ESG 排名"))
-        st.caption("每月最後一個交易日調倉；已扣交易成本（手續費 0.1425%、賣出證交稅 0.3%）")
+        st.caption(f"每 {config.HOLD_DAYS} 個交易日調倉；已扣交易成本（手續費 0.1425%、賣出證交稅 0.3%）")
         risk_on = _keep("risk_on", st.checkbox(
             "風險控制（降低最大回撤，報酬會變低）", _remember("risk_on", config.DEFAULT_RISK_CONTROL),
             help="① 不買跌破年線（200 日均線）的股票\n\n"
