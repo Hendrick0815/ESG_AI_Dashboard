@@ -19,6 +19,7 @@ MODE_LABELS = {"real": "真實資料（爬蟲＋本機＋TEJ）", "demo": "合�
 def setup_page(title: str, icon: str = "📊") -> None:
     st.set_page_config(page_title=f"{title}｜ESG-AI 選股平台", page_icon=icon, layout="wide",
                        initial_sidebar_state="expanded")
+    st.sidebar.caption("🌙 深色模式：網頁右上角 ⋮ → Settings → Theme 選 Dark（選 System 會跟著電腦或手機的設定）")
 
 
 def _remember(key: str, default):

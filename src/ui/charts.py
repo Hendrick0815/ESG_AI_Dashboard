@@ -24,6 +24,27 @@ BENCH_GRAYS = [c for c, _ in BENCH_FALLBACK]
 SERIES_PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
 UP, DOWN = "#e34948", "#008300"   # 台股：紅漲綠跌
 GRID = "rgba(128,128,128,0.18)"
+# 深色主題時，原本偏暗的顏色換成較亮的版本（深灰、深紫在黑底上看不清楚）
+DARK_SWAP = {"#3f3e3b": "#d6d5d0", "#4a3aa7": "#a594f9", "#52514e": "#bdbcb6", "#6f6e69": "#a8a7a1",
+             "#008300": "#3fbf5f"}
+
+
+def is_dark() -> bool:
+    """目前網頁是否為深色主題（使用者在 ⋮ → Settings 切換，或跟著系統設定）。"""
+    try:
+        import streamlit as st
+        return getattr(st.context.theme, "type", None) == "dark"
+    except Exception:
+        return False
+
+
+def _bg() -> str:
+    """標記外框用的背景色（跟網頁底色一樣，看起來像留白）。"""
+    return "#0F1412" if is_dark() else "white"
+
+
+def _c(color: str) -> str:
+    return DARK_SWAP.get(color, color) if is_dark() else color
 
 
 def _layout(fig: go.Figure, title: str = "", height: int = 420, y_title: str = "", pct_y: bool = False) -> go.Figure:
@@ -32,7 +53,7 @@ def _layout(fig: go.Figure, title: str = "", height: int = 420, y_title: str = "
     fig.update_layout(
         title=dict(text=title, x=0, xanchor="left", y=1, yanchor="top", yref="container",
                    pad=dict(t=12, l=4), font=dict(size=15)),
-        height=height, template="plotly_white",
+        height=height, template="plotly_dark" if is_dark() else "plotly_white",
         margin=dict(l=10, r=10, t=48 if title else 16, b=10, autoexpand=True), hovermode="x unified",
         legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="left", x=0, title=None,
                     font=dict(size=12)),
@@ -52,10 +73,10 @@ def style_map(names) -> Dict[str, tuple]:
             m[n] = (STRATEGY_COLORS[n], "solid", 2.4)
         elif n in BENCH_STYLES:
             c, d = BENCH_STYLES[n]
-            m[n] = (c, d, 1.4 if n == "^TWII" else 1.8)
+            m[n] = (_c(c), d, 1.4 if n == "^TWII" else 1.8)
         else:
             c, d = BENCH_FALLBACK[g % len(BENCH_FALLBACK)]
-            m[n] = (c, d, 1.8)
+            m[n] = (_c(c), d, 1.8)
             g += 1
     return m
 
@@ -74,9 +95,13 @@ def nav_chart(returns: pd.DataFrame, labels: Optional[Dict[str, str]] = None, ti
     order = [s for s in STRATEGIES if s in set(df["portfolio"])] + rest
     smap = style_map(order)
     fig = go.Figure()
+    lows, highs = [], []
     for p in order:
         g = df[df["portfolio"] == p]
         nav = (1 + g["ret"].fillna(0)).cumprod()
+        if len(nav):
+            lows.append(float(nav.min()))
+            highs.append(float(nav.max()))
         c, dash, width = smap[p]
         fig.add_trace(go.Scatter(
             x=g["date"], y=nav, mode="lines", name=labels.get(p, p),
@@ -86,7 +111,10 @@ def nav_chart(returns: pd.DataFrame, labels: Optional[Dict[str, str]] = None, ti
     fig.add_hline(y=1, line=dict(color=GRID, width=1))
     fig = _layout(fig, title, y_title="淨值（起點 = 1，對數刻度）" if log_y else "淨值（起點 = 1）")
     if log_y:
-        fig.update_yaxes(type="log")
+        nice = [0.5, 0.7, 1, 1.5, 2, 3, 5, 7, 10, 15, 20, 30, 50, 70, 100, 150, 200, 300, 500, 700, 1000]
+        lo, hi = (min(lows), max(highs)) if lows else (1.0, 1.0)
+        ticks = [v for v in nice if lo * 0.9 <= v <= hi * 1.1] or [1]
+        fig.update_yaxes(type="log", tickvals=ticks, ticktext=[f"{v:g}" for v in ticks])
     return fig
 
 
@@ -112,7 +140,7 @@ def risk_return_scatter(perf: pd.DataFrame, labels: Optional[Dict[str, str]] = N
         fig.add_trace(go.Scatter(
             x=[r["ann_vol"]], y=[r["ann_return"]], mode="markers+text", name=labels.get(r["portfolio"], r["portfolio"]),
             text=[labels.get(r["portfolio"], r["portfolio"])], textposition="top center",
-            marker=dict(size=12, color=cmap[r["portfolio"]], line=dict(width=2, color="white"),
+            marker=dict(size=12, color=cmap[r["portfolio"]], line=dict(width=2, color=_bg()),
                         symbol="circle" if r["portfolio"] in STRATEGIES else "diamond"),
             hovertemplate="年化波動 %{x:.1%}<br>年化報酬 %{y:.1%}<extra></extra>",
         ))
@@ -152,7 +180,7 @@ def line_chart(df: pd.DataFrame, x: str, y: str, title: str, pct: bool = False, 
 
 
 def histogram(values: pd.Series, title: str) -> go.Figure:
-    fig = go.Figure(go.Histogram(x=values, nbinsx=40, marker=dict(color=SERIES_PALETTE[0], line=dict(width=1, color="white")),
+    fig = go.Figure(go.Histogram(x=values, nbinsx=40, marker=dict(color=SERIES_PALETTE[0], line=dict(width=1, color=_bg())),
                                  hovertemplate="%{x:.1%}：%{y} 天<extra></extra>"))
     fig = _layout(fig, title, height=320, y_title="天數")
     fig.update_xaxes(tickformat=".0%")
@@ -189,9 +217,9 @@ def scatter_peers(df: pd.DataFrame, x: str, y: str, label: str, highlight: str, 
     other = df[df[label] != highlight]
     me = df[df[label] == highlight]
     fig.add_trace(go.Scatter(x=other[x], y=other[y], mode="markers+text", text=other[label], textposition="top center",
-                             marker=dict(size=10, color="#8a8984", line=dict(width=2, color="white")), name="同業"))
+                             marker=dict(size=10, color="#8a8984", line=dict(width=2, color=_bg())), name="同業"))
     fig.add_trace(go.Scatter(x=me[x], y=me[y], mode="markers+text", text=me[label], textposition="top center",
-                             marker=dict(size=14, color=SERIES_PALETTE[0], line=dict(width=2, color="white")), name="本檔"))
+                             marker=dict(size=14, color=SERIES_PALETTE[0], line=dict(width=2, color=_bg())), name="本檔"))
     fig = _layout(fig, title, height=420, y_title=y_title, pct_y=True)
     fig.update_xaxes(title=x_title, showgrid=True, gridcolor=GRID)
     fig.update_layout(hovermode="closest")

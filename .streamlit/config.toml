@@ -1,7 +1,15 @@
+# 淺色／深色兩套主題：網頁右上角 ⋮ → Settings → Theme 可切換（預設跟著電腦或手機的系統設定）
 [theme]
-base = "light"
+font = "sans serif"
+
+[theme.light]
 primaryColor = "#2E8B57"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F0F4F0"
 textColor = "#1A1A1A"
-font = "sans serif"
+
+[theme.dark]
+primaryColor = "#3CB371"
+backgroundColor = "#0F1412"
+secondaryBackgroundColor = "#1A231F"
+textColor = "#E6EAE7"

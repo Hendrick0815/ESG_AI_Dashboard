@@ -87,6 +87,9 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
     if len(trading_days) < 120:
         raise ValueError(f"只有 {len(trading_days)} 個交易日，資料太短，建議至少 1 年。")
     test_start = _first_test_day(trading_days, p.hold_days)
+    bt_floor = pd.Timestamp(config.BACKTEST_START)
+    if test_start < bt_floor < trading_days[-1] - pd.Timedelta(days=60):
+        test_start = pd.Timestamp(trading_days[trading_days >= bt_floor][0])   # 績效從 ESG 有資料那天起算
     schedule = bt.rebalance_schedule(trading_days, test_start)
     last_day = pd.Timestamp(trading_days[-1])
     pred_dates = schedule + ([last_day] if last_day not in schedule else [])
