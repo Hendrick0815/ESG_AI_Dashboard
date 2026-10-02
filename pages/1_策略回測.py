@@ -1,4 +1,4 @@
-"""策略回測：績效比較、歷次持股、市場情境、換股成本、方法說明。"""
+"""策略回測：績效比較（可選期間）、歷次持股、換股成本、方法說明。"""
 import pandas as pd
 import streamlit as st
 
@@ -24,20 +24,51 @@ st.title("📈 策略回測")
 st.caption(f"樣本外期間 {res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}，共 {len(res.rebalance_dates)} 次調倉")
 show_notes(res.notes)
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["績效比較", "歷次持股", "市場情境", "換股與成本", "方法說明"])
+tab1, tab2, tab4, tab5 = st.tabs(["績效比較", "歷次持股", "換股與成本", "方法說明"])
 
 with tab1:
-    st.plotly_chart(charts.nav_chart(res.returns, labels), width="stretch")
-    tbl = format_table(res.perf)
+    r0, r1 = res.test_start, res.latest_date
+    esg_start = res.panel_info.get("esg_first_date")
+    options = {"全部樣本外期間": (r0, r1)}
+    for label, years in [("近 1 年", 1), ("近 3 年", 3), ("近 5 年", 5)]:
+        a0 = r1 - pd.DateOffset(years=years)
+        if a0 > r0:
+            options[label] = (a0, r1)
+    if esg_start is not None and pd.Timestamp(esg_start) > r0:
+        options[f"有 ESG 評等以後（{pd.Timestamp(esg_start):%Y-%m} 起）"] = (pd.Timestamp(esg_start), r1)
+    options["自訂"] = None
+    p1, p2 = st.columns([5, 1])
+    choice = p1.radio("期間", list(options), horizontal=True)
+    log_y = p2.checkbox("對數刻度", value=False, help="期間很長、淨值差距很大時，對數刻度比較看得出每段期間的漲跌幅")
+    if choice == "自訂":
+        rng = st.date_input("選擇區間", value=(r0.date(), r1.date()), min_value=r0.date(), max_value=r1.date())
+        if not isinstance(rng, (list, tuple)) or len(rng) < 2:
+            st.info("請選擇結束日期")
+            st.stop()
+        a, b = pd.Timestamp(rng[0]), pd.Timestamp(rng[1])
+    else:
+        a, b = options[choice]
+    full = choice == "全部樣本外期間"
+    sub_ret = res.returns if full else res.returns[(res.returns["date"] > a) & (res.returns["date"] <= b)]
+    if sub_ret.empty:
+        st.info("這段期間沒有資料")
+        st.stop()
+    sub_perf = res.perf if full else performance_table(sub_ret)
+    title = "累積淨值" if full else f"{choice} 累積淨值（{a:%Y-%m-%d} ～ {b:%Y-%m-%d}）" if choice == "自訂" \
+        else f"{choice} 累積淨值"
+    st.plotly_chart(charts.nav_chart(sub_ret, labels, title, log_y=log_y), width="stretch")
+    tbl = format_table(sub_perf)
     tbl["投組"] = tbl["投組"].map(lambda p: labels.get(p, p))
     st.dataframe(tbl, hide_index=True, width="stretch")
-    st.download_button("下載績效表 CSV", to_csv_bytes(res.perf), "performance.csv", "text/csv")
+    st.download_button("下載績效表 CSV", to_csv_bytes(sub_perf), "performance.csv", "text/csv")
     c1, c2 = st.columns(2)
-    c1.plotly_chart(charts.risk_return_scatter(res.perf, labels), width="stretch")
-    c2.plotly_chart(charts.drawdown_chart(res.returns, labels), width="stretch")
+    c1.plotly_chart(charts.risk_return_scatter(sub_perf, labels), width="stretch")
+    c2.plotly_chart(charts.drawdown_chart(sub_ret, labels), width="stretch")
     if not res.risk_log.empty:
-        st.plotly_chart(charts.exposure_chart(res.risk_log), width="stretch")
-        st.caption("持股比例：加權指數在年線之上時 100%，跌破年線時 50%（其餘為現金）。")
+        rl = res.risk_log if full else res.risk_log[(res.risk_log["date"] > a) & (res.risk_log["date"] <= b)]
+        if not rl.empty:
+            st.plotly_chart(charts.exposure_chart(rl), width="stretch")
+            st.caption("持股比例：加權指數在年線之上時 100%，跌破年線時 50%（其餘為現金）。")
     with st.expander("指標怎麼看"):
         st.markdown(
             f"- **年化報酬**：幾何年化，(1+累積報酬)^(252/天數) − 1\n"
@@ -61,28 +92,6 @@ with tab2:
                 sub = res.holdings[(res.holdings["date"] == d) & (res.holdings["portfolio"] == strat)]
                 holdings_block(sub, names, strat, "該期空手（沒有可用分數）")
         st.download_button("下載全部持股紀錄 CSV", to_csv_bytes(res.holdings), "holdings.csv", "text/csv")
-
-with tab3:
-    r0, r1 = res.test_start, res.latest_date
-    mid = r0 + (r1 - r0) / 2
-    options = {"全部樣本外期間": (r0, r1), "前半段": (r0, mid), "後半段": (mid, r1), "自訂": None}
-    choice = st.radio("期間", list(options), horizontal=True)
-    if choice == "自訂":
-        rng = st.date_input("選擇區間", value=(r0.date(), r1.date()), min_value=r0.date(), max_value=r1.date())
-        if not isinstance(rng, (list, tuple)) or len(rng) < 2:
-            st.info("請選擇結束日期")
-            st.stop()
-        a, b = pd.Timestamp(rng[0]), pd.Timestamp(rng[1])
-    else:
-        a, b = options[choice]
-    sub = res.returns[(res.returns["date"] > a) & (res.returns["date"] <= b)]
-    if sub.empty:
-        st.info("這段期間沒有資料")
-    else:
-        st.plotly_chart(charts.nav_chart(sub, labels, f"{choice} 累積淨值"), width="stretch")
-        t = format_table(performance_table(sub))
-        t["投組"] = t["投組"].map(lambda p: labels.get(p, p))
-        st.dataframe(t, hide_index=True, width="stretch")
 
 with tab4:
     if res.trades.empty:
@@ -161,7 +170,7 @@ with tab5:
 #### 限制
 - 股票池是用「最近」的成交金額挑出的目前上市櫃公司，存在存活者偏差與前視偏差（過去冷門、現在才熱門的股票也被納入）；以收盤價成交為假設，未考慮滑價。
 - 回測約 8 年（2018 年底起），涵蓋 2020 年疫情崩跌與 2022 年空頭；但預設參數是在同一段期間比較後選出的，未來報酬很可能比回測低。
-- **ESG 評等最早從 2022 年 11 月才有**：在那之前「AI+ESG」等同單純 AI、「單純 ESG」沒有可用分數而空手（報酬 0），所以這兩個策略的全期績效要搭配「市場情境」頁看 2022 年底以後的區間。
+- **ESG 評等最早從 2022 年 11 月才有**：在那之前「AI+ESG」等同單純 AI、「單純 ESG」沒有可用分數而空手（報酬 0），所以這兩個策略的全期績效要在「績效比較」選「有 ESG 評等以後」的期間來看。
 - 00850（2019-08 上市）、00878（2020-07 上市）的績效只從上市日起算，期間比其他投組短。
 - 2017～2022 年的本益比／淨值比若還沒補齊，該期間以中位數代替（每日排程會自動補）。
 """)

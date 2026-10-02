@@ -64,7 +64,8 @@ def color_map(names) -> Dict[str, str]:
     return {n: v[0] for n, v in style_map(names).items()}
 
 
-def nav_chart(returns: pd.DataFrame, labels: Optional[Dict[str, str]] = None, title: str = "累積淨值") -> go.Figure:
+def nav_chart(returns: pd.DataFrame, labels: Optional[Dict[str, str]] = None, title: str = "累積淨值",
+              log_y: bool = False) -> go.Figure:
     labels = labels or {}
     df = returns.sort_values("date")
     from .. import config
@@ -83,7 +84,10 @@ def nav_chart(returns: pd.DataFrame, labels: Optional[Dict[str, str]] = None, ti
             hovertemplate="%{y:.3f}",
         ))
     fig.add_hline(y=1, line=dict(color=GRID, width=1))
-    return _layout(fig, title, y_title="淨值（起點 = 1）")
+    fig = _layout(fig, title, y_title="淨值（起點 = 1，對數刻度）" if log_y else "淨值（起點 = 1）")
+    if log_y:
+        fig.update_yaxes(type="log")
+    return fig
 
 
 def drawdown_chart(returns: pd.DataFrame, labels: Optional[Dict[str, str]] = None) -> go.Figure:
