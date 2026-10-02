@@ -34,14 +34,20 @@ with tab1:
         a0 = r1 - pd.DateOffset(years=years)
         if a0 > r0:
             options[label] = (a0, r1)
+    default_label = None
     if esg_start is not None and pd.Timestamp(esg_start) > r0:
-        options[f"有 ESG 評等以後（{pd.Timestamp(esg_start):%Y-%m} 起）"] = (pd.Timestamp(esg_start), r1)
+        # 預設從 TEJ ESG 評等第一次公告（2022-11-01）開始比較：三個策略都有完整資料，比較才公平
+        default_label = f"{pd.Timestamp(esg_start):%Y-%m-%d} 起（有 ESG 評等）"
+        options[default_label] = (pd.Timestamp(esg_start), r1)
     options["自訂"] = None
     p1, p2 = st.columns([5, 1])
-    choice = p1.radio("期間", list(options), horizontal=True)
+    keys = list(options)
+    choice = p1.radio("期間", keys, horizontal=True, index=keys.index(default_label) if default_label else 0,
+                      help="模型仍用 2017 年起的資料訓練；這裡只決定績效從哪天開始算")
     log_y = p2.checkbox("對數刻度", value=False, help="期間很長、淨值差距很大時，對數刻度比較看得出每段期間的漲跌幅")
     if choice == "自訂":
-        rng = st.date_input("選擇區間", value=(r0.date(), r1.date()), min_value=r0.date(), max_value=r1.date())
+        d0 = options[default_label][0] if default_label else r0
+        rng = st.date_input("選擇區間", value=(d0.date(), r1.date()), min_value=r0.date(), max_value=r1.date())
         if not isinstance(rng, (list, tuple)) or len(rng) < 2:
             st.info("請選擇結束日期")
             st.stop()
@@ -54,8 +60,7 @@ with tab1:
         st.info("這段期間沒有資料")
         st.stop()
     sub_perf = res.perf if full else performance_table(sub_ret)
-    title = "累積淨值" if full else f"{choice} 累積淨值（{a:%Y-%m-%d} ～ {b:%Y-%m-%d}）" if choice == "自訂" \
-        else f"{choice} 累積淨值"
+    title = "全部樣本外期間 累積淨值" if full else f"累積淨值（{a:%Y-%m-%d} ～ {b:%Y-%m-%d}）"
     st.plotly_chart(charts.nav_chart(sub_ret, labels, title, log_y=log_y), width="stretch")
     tbl = format_table(sub_perf)
     tbl["投組"] = tbl["投組"].map(lambda p: labels.get(p, p))
@@ -170,7 +175,7 @@ with tab5:
 #### 限制
 - 股票池是用「最近」的成交金額挑出的目前上市櫃公司，存在存活者偏差與前視偏差（過去冷門、現在才熱門的股票也被納入）；以收盤價成交為假設，未考慮滑價。
 - 回測約 8 年（2018 年底起），涵蓋 2020 年疫情崩跌與 2022 年空頭；但預設參數是在同一段期間比較後選出的，未來報酬很可能比回測低。
-- **ESG 評等最早從 2022 年 11 月才有**：在那之前「AI+ESG」等同單純 AI、「單純 ESG」沒有可用分數而空手（報酬 0），所以這兩個策略的全期績效要在「績效比較」選「有 ESG 評等以後」的期間來看。
+- **ESG 評等最早從 2022 年 11 月才有**：在那之前「AI+ESG」等同單純 AI、「單純 ESG」沒有可用分數而空手（報酬 0），所以「績效比較」預設從 2022-11-01 開始算，三個策略的比較才公平；要看 2018 年起的全期可以切換到「全部樣本外期間」。
 - 00850（2019-08 上市）、00878（2020-07 上市）的績效只從上市日起算，期間比其他投組短。
 - 2017～2022 年的本益比／淨值比若還沒補齊，該期間以中位數代替（每日排程會自動補）。
 """)
