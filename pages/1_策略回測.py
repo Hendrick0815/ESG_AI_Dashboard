@@ -2,7 +2,7 @@
 import pandas as pd
 import streamlit as st
 
-from src import config
+from src import config, forecast
 from src.backtest import STRATEGIES
 from src.metrics import format_table, performance_table
 from src.ui import charts
@@ -82,12 +82,36 @@ with tab2:
         st.info("沒有持股紀錄")
     else:
         d = st.selectbox("調倉日", dates, format_func=lambda x: pd.Timestamp(x).strftime("%Y-%m-%d"))
+        d = pd.Timestamp(d)
+        trading_days = pd.DatetimeIndex(sorted(ds.prices["date"].unique()))
+        window = forecast.holding_window(res.rebalance_dates, res.latest_date, d, trading_days, params.hold_days)
+        later = [x for x in res.rebalance_dates if pd.Timestamp(x) > d]
         cols = st.columns(len(STRATEGIES))
         for col, strat in zip(cols, STRATEGIES):
             with col:
                 st.markdown(f"**{strat}**")
                 sub = res.holdings[(res.holdings["date"] == d) & (res.holdings["portfolio"] == strat)]
                 holdings_block(sub, names, strat, "該期空手（沒有可用分數）")
+                if sub.empty or len(window) == 0:
+                    continue
+                fc = forecast.holding_forecast(sub, res.evaluation, res.returns, ds.benchmarks, strat, d, window,
+                                               params.hold_days)
+                path = fc["path"]
+                st.plotly_chart(charts.forecast_chart(path, strat, "持有期間預估走勢", height=300), width="stretch")
+                end_exp = path["expected"].iloc[-1]
+                lo, hi = path["lo68"].iloc[-1], path["hi68"].iloc[-1]
+                msg = f"預估期末 **{end_exp:+.1%}**（68% 區間 {lo:+.1%} ～ {hi:+.1%}）"
+                act = path["actual"].dropna()
+                if len(act) > 1:
+                    msg += f"｜實際 **{act.iloc[-1]:+.1%}**" + ("" if len(act) == len(path) else f"（到 {path.loc[act.index[-1], 'date']:%m/%d}）")
+                st.caption(msg)
+        nxt = f"下一次調倉 {pd.Timestamp(later[0]):%Y-%m-%d}" if later else f"之後 {params.hold_days} 個交易日（尚未發生的日子以平日估算，未扣國定假日）"
+        st.caption(
+            f"**持有期間**：{d:%Y-%m-%d} 收盤買進 → {nxt}。"
+            "**模型預估（虛線）**＝加權指數過去一年平均日報酬 ＋ 持股的 AI 預測超額報酬（依權重平均），平均分攤到持有期間；"
+            "**色帶**＝依該策略過去 60 個交易日的波動，約 68%（深）／95%（淺）的機率會落在範圍內；"
+            "**實線**＝實際走勢（已扣當天交易成本）。預估只用調倉日以前的資料。"
+            "注意：AI 分數的大小只適合排序，當作報酬預估時通常偏保守，實際漲跌主要由大盤決定。")
         st.download_button("下載全部持股紀錄 CSV", to_csv_bytes(res.holdings), "holdings.csv", "text/csv")
 
 with tab4:

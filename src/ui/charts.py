@@ -261,5 +261,34 @@ def rank_ic_chart(ic: pd.DataFrame) -> go.Figure:
     return fig
 
 
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    h = hex_color.lstrip("#")
+    return f"rgba({int(h[0:2], 16)},{int(h[2:4], 16)},{int(h[4:6], 16)},{alpha})"
+
+
+def forecast_chart(path: pd.DataFrame, strategy: str, title: str = "", height: int = 300) -> go.Figure:
+    """持有期間預估：95%／68% 區間（色帶）、模型預期（虛線）、實際走勢（實線）、加權指數（灰色細線）。"""
+    color = _c(STRATEGY_COLORS.get(strategy, SERIES_PALETTE[0]))
+    x = path["date"]
+    fig = go.Figure()
+    for lo, hi, alpha, name in [("lo95", "hi95", 0.12, "95% 區間"), ("lo68", "hi68", 0.22, "68% 區間")]:
+        fig.add_trace(go.Scatter(x=x, y=path[hi], mode="lines", line=dict(width=0), showlegend=False,
+                                 hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=x, y=path[lo], mode="lines", line=dict(width=0), fill="tonexty",
+                                 fillcolor=_rgba(color, alpha), name=name, hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=x, y=path["expected"], mode="lines", name="模型預估",
+                             line=dict(color=color, width=2, dash="dash"), hovertemplate="%{y:+.1%}"))
+    if path["actual"].notna().sum() > 1:
+        fig.add_trace(go.Scatter(x=x, y=path["actual"], mode="lines+markers", name="實際",
+                                 line=dict(color=color, width=2.6), marker=dict(size=4), hovertemplate="%{y:+.1%}"))
+    if path["market"].notna().sum() > 1:
+        fig.add_trace(go.Scatter(x=x, y=path["market"], mode="lines", name="加權指數（實際）",
+                                 line=dict(color=_c("#3f3e3b"), width=1.2, dash="dot"), hovertemplate="%{y:+.1%}"))
+    fig.add_hline(y=0, line=dict(color=GRID, width=1))
+    fig = _layout(fig, title, height=height, pct_y=True)
+    fig.update_xaxes(tickformat="%m/%d", rangebreaks=[dict(bounds=["sat", "mon"])])   # 不畫週末空白
+    return fig
+
 __all__ = ["nav_chart", "drawdown_chart", "exposure_chart", "industry_bar", "risk_return_scatter", "price_chart", "line_chart", "histogram",
-           "bar_h", "esg_radar", "scatter_peers", "rank_ic_chart", "STRATEGY_COLORS", "style_map", "px"]
+           "bar_h", "esg_radar", "scatter_peers", "rank_ic_chart", "forecast_chart", "STRATEGY_COLORS", "style_map", "px"]

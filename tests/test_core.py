@@ -411,3 +411,28 @@ def test_industry_cap():
     top = bt.pick_top(s, 3, ind, max_per_industry=2)
     assert list(top.index) == ["A", "B", "D"]               # C 超過半導體上限被跳過
     assert list(bt.pick_top(s, 3).index) == ["A", "B", "C"]  # 不限制時照分數
+
+
+def test_holding_forecast():
+    from src import forecast
+    days = pd.bdate_range("2026-01-01", periods=120)
+    d = days[100]
+    rets = []
+    for name, r in [("單純 AI", 0.002), ("^TWII", 0.001)]:
+        rets.append(pd.DataFrame({"date": days, "portfolio": name,
+                                  "ret": r + 0.01 * np.sin(np.arange(len(days)))}))
+    returns = pd.concat(rets, ignore_index=True)
+    hold = pd.DataFrame({"ticker": ["A", "B"], "weight": [0.5, 0.5]})
+    ev = pd.DataFrame({"date": d, "ticker": ["A", "B", "C"], "pred": [0.04, 0.02, -0.5]})
+    bench = pd.DataFrame({"date": days, "ticker": "^TWII", "close": 100 * (1.001 ** np.arange(len(days)))})
+    w = forecast.holding_window([days[90], d, days[110]], days[-1], d, days, 10)
+    assert list(w) == list(days[101:111])                       # 到下一個調倉日為止
+    fc = forecast.holding_forecast(hold, ev, returns, bench, "單純 AI", d, w, 10)
+    p = fc["path"]
+    assert abs(fc["excess"] - 0.03) < 1e-12                     # 只用持股 A、B 的預測
+    assert abs(p["expected"].iloc[-1] - ((1.001) ** 10 - 1 + 0.03)) < 1e-6
+    assert (p["hi95"] >= p["hi68"]).all() and (p["lo95"] <= p["lo68"]).all()
+    assert p["actual"].notna().all() and p["actual"].iloc[0] == 0
+    # 最後一期沒有未來資料 → 補成平日，實際走勢為空
+    w2 = forecast.holding_window([d], days[-1], days[-1], days, 10)
+    assert len(w2) == 10 and w2[0] > days[-1]
