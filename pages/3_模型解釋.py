@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from src import config
 from src.features import TECH_LABELS
 from src.metrics import fmt_num, fmt_pct
 from src.pipeline import rank_ic
@@ -65,8 +66,10 @@ with st.expander("SHAP 分析（需安裝 shap，可能較慢）"):
 
 with st.expander("使用的特徵"):
     info = res.panel_info
+    used = set(res.importance["feature"]) if not res.importance.empty else set()
+    extra = [f for f in info.get("extra_features", []) if not used or f in used]
     rows = [{"特徵": f, "名稱": TECH_LABELS.get(f, f), "類別": k, "AI 模型使用": "是"}
-            for k, fs in [("技術面", info["tech_features"]),
+            for k, fs in [("技術面", info["tech_features"]), ("見頂訊號／產業", extra),
                           ("估值／財務", info["fin_features"])] for f in fs]
     rows += [{"特徵": f, "名稱": TECH_LABELS.get(f, f), "類別": "ESG", "AI 模型使用": "否（選股時融合）"}
              for f in info["esg_features"]]
@@ -74,6 +77,45 @@ with st.expander("使用的特徵"):
     st.caption(f"ESG 資料涵蓋率（回測樣本中有 ESG 分數的比例）：{info['esg_coverage']:.0%}")
 
 with st.expander("訓練紀錄"):
-    st.dataframe(res.train_log, hide_index=True, width="stretch")
+    log = res.train_log.copy()
+    if log.empty:
+        st.info("沒有訓練紀錄")
+    else:
+        log["rebalance_date"] = pd.to_datetime(log["rebalance_date"])
+        log["train_end"] = pd.to_datetime(log["train_end"])
+        data_start = pd.to_datetime(ds.prices["date"]).min()
+        nxt = list(log["rebalance_date"].iloc[1:]) + [None]
+        rows = []
+        for i, (r, until) in enumerate(zip(log.itertuples(), nxt), 1):
+            # 這個模型負責的期間：這次訓練 → 下次重新訓練前
+            used_dates = sorted(d for d in ic["date"] if d >= r.rebalance_date and (until is None or d < until)) \
+                if not ic.empty else []
+            period_ic = ic[ic["date"].isin(used_dates)]["rank_ic"]
+            period_ev = ev[ev["date"].isin(used_dates)]
+            ex = [g.nlargest(params.top_n, "pred")["fwd_ret"].mean() - g["fwd_ret"].mean()
+                  for _, g in period_ev.groupby("date")]
+            prev = log["n_samples"].iloc[i - 2] if i > 1 else None
+            rows.append({
+                "第幾次": i,
+                "訓練日（調倉日）": f"{r.rebalance_date:%Y-%m-%d}",
+                "學習的資料期間": f"{data_start:%Y-%m-%d} ～ {r.train_end:%Y-%m-%d}",
+                "訓練樣本數": f"{int(r.n_samples):,}" + (f"（+{int(r.n_samples - prev):,}）" if prev is not None else ""),
+                "特徵數": int(r.n_features),
+                "負責選股期間": f"{r.rebalance_date:%Y-%m-%d} ～ " + (f"{until - pd.Timedelta(days=1):%Y-%m-%d}" if until is not None
+                                                                     else f"{res.latest_date:%Y-%m-%d}（使用中）"),
+                "選股次數": len(used_dates) if used_dates else "-",
+                "平均 Rank IC": fmt_num(period_ic.mean(), 3) if len(period_ic) else "尚未揭曉",
+                f"Top {params.top_n} 每期超額": fmt_pct(np.mean(ex)) if ex else "尚未揭曉",
+            })
+        st.markdown(
+            f"模型**每 {config.RETRAIN_EVERY} 次調倉重新訓練一次**（約每 {config.RETRAIN_EVERY * params.hold_days} 個交易日），"
+            "每次都把到當時為止「已經知道結果」的資料全部拿來學，所以樣本數會越來越多。每一列代表一個模型：")
+        st.markdown(
+            f"- **學習的資料期間**：模型看過的歷史資料。結束日比訓練日早約 {params.hold_days} 個交易日，因為最後這段的「未來 10 天報酬」在訓練當天還不知道，不能拿來學。\n"
+            "- **訓練樣本數**：「股票 × 日期」的筆數（每 5 個交易日取一天），括號是比上一次多學了幾筆。\n"
+            "- **負責選股期間**：這個模型被拿來選股的期間，到下一次重新訓練為止。\n"
+            "- **平均 Rank IC／Top N 每期超額**：這個模型在負責期間的實際表現（IC 大於 0、超額為正代表選得比平均好；未扣交易成本）。")
+        st.dataframe(pd.DataFrame(rows[::-1]), hide_index=True, width="stretch")
+        st.caption("最新的模型排在最上面。")
 
 st.download_button("下載模型預測與實際報酬 CSV", to_csv_bytes(res.evaluation), "model_predictions.csv", "text/csv")
