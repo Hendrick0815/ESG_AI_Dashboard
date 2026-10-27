@@ -113,17 +113,6 @@ with tab2:
                                                        window, params.hold_days)["path"]
         st.markdown(f"**持有期間**：{d:%Y-%m-%d} 收盤買進 → {end:%Y-%m-%d} 調倉（共 {len(window)} 個交易日"
                     + ("，尚未走完" if d == dates[0] and end > pd.Timestamp(res.latest_date) else "") + "）")
-        reg = forecast.market_regime(ds.benchmarks, min(pd.Timestamp(res.latest_date), end), params.hold_days)
-        if reg:
-            icon = {"多頭": "🐂", "空頭": "🐻", "高波動": "⚡", "盤整": "↔️"}[reg["regime"]]
-            metric_cards([
-                (f"目前市場情境（{min(pd.Timestamp(res.latest_date), end):%m/%d} 收盤）", f"{icon} {reg['regime']}",
-                 f"60 日報酬 {reg['ret60']:+.1%}｜20 日波動 {reg['vol20']:.0%}｜距一年高點 {reg['dd']:+.1%}"),
-                (f"過去「{reg['regime']}」之後 {params.hold_days} 日的加權指數", f"平均 {reg['fwd_mean']:+.1%}",
-                 f"上漲機率 {reg['fwd_up']:.0%}（{reg['n']:,} 個交易日樣本）"),
-            ], min_width=340)
-            st.caption("情境依論文的事前規則判斷（空頭：60 日跌 ≥10% 或距高點回撤 ≥15%；高波動：20 日年化波動 ≥25%；"
-                       "多頭：60 日漲 ≥5%；其餘盤整），只供參考：歷史上情境之後的報酬差異大、樣本少，不放進預估。")
         if fcs:
             items = {}
             for strat, path in fcs.items():

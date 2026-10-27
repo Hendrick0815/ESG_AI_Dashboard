@@ -53,7 +53,8 @@ class FakeStreamlit(types.ModuleType):
 
     def __getattr__(self, name):
         if name in {"title", "caption", "markdown", "header", "subheader", "write", "info", "warning", "error",
-                    "success", "metric", "divider", "code", "json", "set_page_config", "image", "empty", "update"}:
+                    "success", "metric", "divider", "code", "json", "set_page_config", "image", "empty", "update",
+                    "page_link"}:
             return lambda *a, **k: self._show(name, *a, **k)
         raise AttributeError(name)
 
@@ -156,17 +157,20 @@ def fake_plotly():
         def __init__(self, *a, **k):
             self.traces = list(a[:1]) if a and not isinstance(a[0], list) else list(a[0]) if a else []
 
-        def add_trace(self, t):
+        def add_trace(self, t, **k):
             self.traces.append(t)
 
         def __getattr__(self, name):
             return lambda *a, **k: self
 
     go.Figure = Fig
+    sub = types.ModuleType("plotly.subplots")
+    sub.make_subplots = lambda *a, **k: Fig()
+    plotly.subplots = sub
     for n in ["Scatter", "Candlestick", "Bar", "Histogram", "Scatterpolar"]:
         setattr(go, n, lambda *a, _n=n, **k: (_n, k))
     plotly.graph_objects, plotly.express = go, px
-    return {"plotly": plotly, "plotly.graph_objects": go, "plotly.express": px}
+    return {"plotly": plotly, "plotly.graph_objects": go, "plotly.express": px, "plotly.subplots": sub}
 
 
 AUTO_CALLS = []
@@ -208,6 +212,8 @@ if __name__ == "__main__":
         ("pages/1_策略回測.py", {"資料來源": "real", "期間": "全部樣本外期間"}),
         ("pages/4_產業與籌碼.py", {"資料來源": "real"}),
         ("pages/4_產業與籌碼.py", {"資料來源": "real", "統計期間": 20}),
+        ("pages/0_大盤趨勢預測.py", {}),
+        ("pages/0_大盤趨勢預測.py", {"期間": "2008 年起"}),
     ]
     failed = 0
     for path, ov in cases:

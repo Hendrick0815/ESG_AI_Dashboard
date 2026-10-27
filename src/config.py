@@ -115,3 +115,7 @@ INDUSTRY_TREND_WEIGHT = 0.0     # AI 分數 =（1−w）× AI 排名 ＋ w × �
 INDUSTRY_TREND_MEASURE = "ind_mom_20"   # 產業趨勢指標：ind_mom_20／60／120（近 1／3／6 月報酬）、ind_gap_ma60
 
 INSTITUTIONAL_FILE = PROCESSED_DIR / "institutional.csv"   # 三大法人買賣超（證交所 T86）
+# 大盤趨勢預測用的長期資料（Yahoo，1997 起）：加權指數、美股、費城半導體、VIX、美國 10 年期公債殖利率
+MACRO_FILE = PROCESSED_DIR / "macro.csv"
+MACRO_TICKERS = ["^TWII", "^GSPC", "^SOX", "^VIX", "^TNX"]
+MACRO_START = "1997-01-01"

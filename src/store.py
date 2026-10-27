@@ -317,6 +317,11 @@ def auto_update(progress=None, flows_days: int = 10, now: Optional[datetime] = N
     except Exception as e:
         out["institutional"] = {"error": str(e)}
     try:
+        report("大盤趨勢預測資料（加權指數、美股、VIX）")
+        out["macro"] = update_macro()
+    except Exception as e:
+        out["macro"] = {"error": str(e)}
+    try:
         report("本益比／淨值比／殖利率（月底）")
         val = _read(config.VALUATION_FILE)
         val_start = val["date"].min() if val is not None and not val.empty else None
@@ -328,6 +333,24 @@ def auto_update(progress=None, flows_days: int = 10, now: Optional[datetime] = N
     out["last_price_date"] = str(prices_last_date().date()) if prices_last_date() is not None else None
     append_update_log({"type": "auto", **{k: v for k, v in out.items()}})
     return out
+
+
+def update_macro() -> Dict:
+    """大盤趨勢預測用的長期日資料（Yahoo 收盤價，不還原），每次整段重抓（約 8 千列，幾秒鐘）。"""
+    import yfinance as yf
+    raw = yf.download(config.MACRO_TICKERS, start=config.MACRO_START, progress=False, auto_adjust=False,
+                      threads=False)
+    close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw[["Close"]]
+    long = (close.rename_axis("date").reset_index().melt(id_vars="date", var_name="ticker", value_name="close")
+                 .dropna())
+    if long.empty or long["ticker"].nunique() < 3:
+        raise RuntimeError("Yahoo 沒有回傳足夠的大盤資料")
+    old = _read(config.MACRO_FILE)
+    if old is not None and not old.empty:     # 這次沒抓到的代號保留舊資料
+        long = pd.concat([old[~old["ticker"].isin(set(long["ticker"]))], long], ignore_index=True)
+    long = long.sort_values(["ticker", "date"]).reset_index(drop=True)
+    write_csv(long, config.MACRO_FILE)
+    return {"rows": len(long), "last": str(pd.to_datetime(long["date"]).max().date())}
 
 
 def append_update_log(record: Dict) -> None:
