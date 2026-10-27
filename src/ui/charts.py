@@ -296,6 +296,18 @@ def forecast_chart(path: pd.DataFrame, strategy: str, title: str = "", height: i
         fig.add_annotation(x=path.loc[act.index[-1], "date"], y=act.iloc[-1], text=f"實際 {act.iloc[-1]:+.1%}",
                            showarrow=True, arrowhead=0, ax=-48, ay=0, xanchor="right", font=dict(size=13, color=color),
                            bgcolor=_bg(), bordercolor=color, borderwidth=1, borderpad=2)
+    if "upd" in path and path["upd"].notna().sum() > 1:
+        u = path[path["upd"].notna()]
+        fig.add_trace(go.Scatter(x=u["date"], y=u["upd_hi68"], mode="lines", line=dict(width=0), showlegend=False,
+                                 hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=u["date"], y=u["upd_lo68"], mode="lines", line=dict(width=0), fill="tonexty",
+                                 fillcolor="rgba(255,255,255,0.10)" if is_dark() else "rgba(0,0,0,0.07)",
+                                 showlegend=False, hoverinfo="skip"))
+        fig.add_trace(go.Scatter(x=u["date"], y=u["upd"], mode="lines", name="更新後預估",
+                                 line=dict(color=_c("#3f3e3b") if not is_dark() else "#e6eae7", width=2, dash="dashdot"),
+                                 hovertemplate="更新後預估 %{y:+.1%}<extra></extra>"))
+        fig.add_annotation(x=u["date"].iloc[-1], y=u["upd"].iloc[-1], text=f"更新 {u['upd'].iloc[-1]:+.1%}",
+                           showarrow=False, xanchor="right", yanchor="top", yshift=-6, font=dict(size=12))
     if path["market"].notna().sum() > 1:
         fig.add_trace(go.Scatter(x=x, y=path["market"], mode="lines", name="加權指數",
                                  line=dict(color=_c("#8a8984"), width=1.6, dash="dot"),

@@ -106,6 +106,17 @@ with tab2:
                                                        window, params.hold_days)["path"]
         st.markdown(f"**持有期間**：{d:%Y-%m-%d} 收盤買進 → {end:%Y-%m-%d} 調倉（共 {len(window)} 個交易日"
                     + ("，尚未走完" if d == dates[0] and end > pd.Timestamp(res.latest_date) else "") + "）")
+        reg = forecast.market_regime(ds.benchmarks, min(pd.Timestamp(res.latest_date), end), params.hold_days)
+        if reg:
+            icon = {"多頭": "🐂", "空頭": "🐻", "高波動": "⚡", "盤整": "↔️"}[reg["regime"]]
+            metric_cards([
+                (f"目前市場情境（{min(pd.Timestamp(res.latest_date), end):%m/%d} 收盤）", f"{icon} {reg['regime']}",
+                 f"60 日報酬 {reg['ret60']:+.1%}｜20 日波動 {reg['vol20']:.0%}｜距一年高點 {reg['dd']:+.1%}"),
+                (f"過去「{reg['regime']}」之後 {params.hold_days} 日的加權指數", f"平均 {reg['fwd_mean']:+.1%}",
+                 f"上漲機率 {reg['fwd_up']:.0%}（{reg['n']:,} 個交易日樣本）"),
+            ], min_width=340)
+            st.caption("情境依論文的事前規則判斷（空頭：60 日跌 ≥10% 或距高點回撤 ≥15%；高波動：20 日年化波動 ≥25%；"
+                       "多頭：60 日漲 ≥5%；其餘盤整），只供參考：歷史上情境之後的報酬差異大、樣本少，不放進預估。")
         if fcs:
             items = {}
             for strat, path in fcs.items():
@@ -113,13 +124,11 @@ with tab2:
                 act = path["actual"].dropna()
                 items[strat] = {k: float(last[k]) for k in ["expected", "lo68", "hi68", "lo95", "hi95"]}
                 items[strat]["actual"] = float(act.iloc[-1]) if len(act) > 1 else None
-            st.markdown("**期末報酬預估比較**（同一條橫軸：圓圈＝模型預估、粗線＝68% 區間、細線＝95% 區間、菱形＝實際）")
-            st.plotly_chart(charts.forecast_compare(items, height=70 + 70 * len(items)), width="stretch")
             # 縱軸依 68% 區間與實際走勢決定（95% 區間太寬會把線壓扁，超出部分讓它延伸到圖外）
             lo = min(p["lo68"].min() for p in fcs.values())
             hi = max(p["hi68"].max() for p in fcs.values())
             for p in fcs.values():
-                for c in ["actual", "market"]:
+                for c in ["actual", "market", "upd_lo68", "upd_hi68"]:
                     if p[c].notna().any():
                         lo, hi = min(lo, p[c].min()), max(hi, p[c].max())
             step = 0.05
@@ -143,14 +152,21 @@ with tab2:
                     mk = path["market"].dropna()
                     cards.append((f"實際{upto}", f"{act.iloc[-1]:+.1%}",
                                   f"加權指數 {mk.iloc[-1]:+.1%}" if len(mk) > 1 else ""))
+                if path["upd"].notna().any():
+                    cards.append(("更新後預估期末", f"{path['upd'].iloc[-1]:+.1%}",
+                                  f"68% 區間 {path['upd_lo68'].iloc[-1]:+.1%} ～ {path['upd_hi68'].iloc[-1]:+.1%}"))
                 metric_cards(cards, min_width=140)
         st.caption(HOLDINGS_NOTE)
         st.caption(
             "**走勢圖**：三張圖縱軸範圍與刻度相同（每格 5%），都是從調倉日收盤起算的累積報酬。"
-            "**虛線**＝模型預估（加權指數過去一年平均日報酬 ＋ 持股 AI 預測超額的權重平均，平均分攤到持有期間）；"
+            f"**虛線**＝調倉日當天的模型預估（大盤長期平均年化 {config.MARKET_DRIFT_ANNUAL:.0%} ＋ 持股 AI 預測超額的權重平均，平均分攤到持有期間），之後不再改，用來檢驗模型；"
+            "**點虛線＋灰帶**＝更新後預估：從最新的實際報酬接著估剩下的天數（68% 區間）；"
             "**色帶**＝依該策略過去 60 個交易日的波動，約 68%（深色）／95%（淺色，超出縱軸的部分不顯示）機率落在範圍內；"
             "**實線**＝實際走勢（已扣當天交易成本）；**灰色點線**＝加權指數實際走勢。預估只用調倉日以前的資料。"
             "AI 分數適合排序，當成報酬預估時通常偏保守，實際漲跌主要由大盤決定。")
+        if fcs:
+            st.markdown("**期末報酬預估比較**（同一條橫軸：圓圈＝模型預估、粗線＝68% 區間、細線＝95% 區間、菱形＝實際）")
+            st.plotly_chart(charts.forecast_compare(items, height=70 + 70 * len(items)), width="stretch")
         st.download_button("下載全部持股紀錄 CSV", to_csv_bytes(res.holdings), "holdings.csv", "text/csv")
 
 with tab4:

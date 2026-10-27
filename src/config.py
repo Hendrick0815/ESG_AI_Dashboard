@@ -26,6 +26,9 @@ UPDATE_LOG_FILE = PROCESSED_DIR / "update_log.csv"
 # ---- 市場與交易 ----
 TRADING_DAYS = 252
 RISK_FREE_RATE = 0.01           # 年化無風險利率（Sharpe 使用）
+# 持有期間預估用的「大盤預期報酬」（年化）：用長期平均，不用近一年漲幅（大多頭之後會讓預估一律偏多）。
+# 加權指數為價格指數（不含股利），長期年化約 6～8%；設 0 則預估只反映 AI 超額報酬。
+MARKET_DRIFT_ANNUAL = 0.07
 COMMISSION = 0.001425           # 手續費（買、賣各一次）
 SELL_TAX = 0.003                # 證交稅（僅賣出）
 SLIPPAGE = 0.0                  # 額外滑價（每邊，比例）；論文敏感度分析用 0.001／0.002／0.003
