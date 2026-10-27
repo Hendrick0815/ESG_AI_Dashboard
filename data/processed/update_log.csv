@@ -1,26 +1,27 @@
-﻿time,start,end,universe,prices_rows,prices_failed,valuation,type,target,prices,benchmarks,institutional,last_price_date
-2026-09-20 21:03:00,2023-09-20,2026-09-20,core,36549.0,0.0,"{'dates_requested': 37, 'rows_downloaded': 37259}",,,,,,
-2026-09-20 23:29:15,2022-09-01,2026-09-20,core,49250.0,0.0,"{'dates_requested': 13, 'rows_downloaded': 12736}",,,,,,
-2026-09-29 12:28:52,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-09-29,"{'rows': 750, 'failed': 0}",{'rows': 60},"{'dates_requested': 10, 'rows_downloaded': 10794}",2026-09-29
-2026-09-30 13:03:46,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-09-30,"{'rows': 300, 'failed': 0}",{'rows': 21},"{'dates_requested': 10, 'rows_downloaded': 10827}",2026-09-30
-2026-10-01 13:58:21,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1082}",auto,2026-10-01,"{'rows': 350, 'failed': 0}",{'rows': 25},"{'dates_requested': 10, 'rows_downloaded': 10832}",2026-10-01
-2026-10-02 07:50:10,,,300,,,"{'dates_requested': 1, 'rows_downloaded': 0}",auto,2026-10-02,"{'rows': 241162, 'failed': 0}",{'rows': 29},"{'dates_requested': 10, 'rows_downloaded': 9754}",2026-10-02
-2026-10-02 11:43:17,,,,,,"{'dates_requested': 62, 'rows_downloaded': 58136}",auto,2026-10-02,"{'rows': 629137, 'failed': 0}",{'rows': 7713},"{'dates_requested': 10, 'rows_downloaded': 10846}",2026-10-02
-2026-10-02 13:14:48,,,,,,"{'dates_requested': 0, 'rows_downloaded': 0}",auto,2026-10-02,"{'rows': 0, 'failed': 0}",{'rows': 0},"{'dates_requested': 10, 'rows_downloaded': 9737}",2026-10-02
-2026-10-05 15:20:36,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-10-05,"{'rows': 2700, 'failed': 0}",{'rows': 36},"{'dates_requested': 10, 'rows_downloaded': 9727}",2026-10-05
-2026-10-06 13:40:50,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-10-06,"{'rows': 1800, 'failed': 0}",{'rows': 23},"{'dates_requested': 10, 'rows_downloaded': 9713}",2026-10-06
-2026-10-07 14:01:22,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1082}",auto,2026-10-07,"{'rows': 2099, 'failed': 0}",{'rows': 25},"{'dates_requested': 10, 'rows_downloaded': 9724}",2026-10-07
-2026-10-08 14:06:13,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1082}",auto,2026-10-08,"{'rows': 2399, 'failed': 0}",{'rows': 29},"{'dates_requested': 10, 'rows_downloaded': 9719}",2026-10-08
-2026-10-09 13:51:31,,,,,,"{'dates_requested': 0, 'rows_downloaded': 0}",auto,2026-10-09,"{'rows': 2400, 'failed': 0}",{'rows': 29},"{'dates_requested': 10, 'rows_downloaded': 9669}",2026-10-08
-2026-10-12 16:11:51,,,,,,"{'dates_requested': 0, 'rows_downloaded': 0}",auto,2026-10-12,"{'rows': 2400, 'failed': 0}",{'rows': 35},"{'dates_requested': 10, 'rows_downloaded': 9671}",2026-10-08
-2026-10-13 14:38:37,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-10-13,"{'rows': 2700, 'failed': 0}",{'rows': 27},"{'dates_requested': 10, 'rows_downloaded': 9674}",2026-10-13
-2026-10-14 12:27:52,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-10-14,"{'rows': 2103, 'failed': 0}",{'rows': 25},"{'dates_requested': 10, 'rows_downloaded': 9659}",2026-10-14
-2026-10-15 12:11:42,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1081}",auto,2026-10-15,"{'rows': 2399, 'failed': 0}",{'rows': 29},"{'dates_requested': 10, 'rows_downloaded': 9593}",2026-10-15
-2026-10-16 11:58:21,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1082}",auto,2026-10-16,"{'rows': 2699, 'failed': 0}",{'rows': 33},"{'dates_requested': 10, 'rows_downloaded': 9620}",2026-10-16
-2026-10-19 13:33:59,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-10-19,"{'rows': 3000, 'failed': 0}",{'rows': 40},"{'dates_requested': 10, 'rows_downloaded': 9646}",2026-10-19
-2026-10-19 14:01:58,,,,,,"{'dates_requested': 0, 'rows_downloaded': 0}",auto,2026-10-19,"{'rows': 0, 'failed': 0}",{'rows': 0},"{'dates_requested': 10, 'rows_downloaded': 9627}",2026-10-19
-2026-10-20 12:17:39,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1084}",auto,2026-10-20,"{'rows': 2100, 'failed': 0}",{'rows': 28},"{'dates_requested': 10, 'rows_downloaded': 9559}",2026-10-20
-2026-10-21 12:29:48,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1084}",auto,2026-10-21,"{'rows': 2400, 'failed': 0}",{'rows': 32},"{'dates_requested': 10, 'rows_downloaded': 9593}",2026-10-21
-2026-10-22 12:32:04,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1084}",auto,2026-10-22,"{'rows': 2700, 'failed': 0}",{'rows': 36},"{'dates_requested': 10, 'rows_downloaded': 9509}",2026-10-22
-2026-10-23 12:12:46,,,,,,"{'dates_requested': 0, 'rows_downloaded': 0}",auto,2026-10-23,"{'rows': 2700, 'failed': 0}",{'rows': 36},"{'dates_requested': 10, 'rows_downloaded': 9397}",2026-10-22
-2026-10-26 13:38:34,,,,,,"{'dates_requested': 1, 'rows_downloaded': 0}",auto,2026-10-26,"{'rows': 2999, 'failed': 0}",{'rows': 39},"{'dates_requested': 10, 'rows_downloaded': 8370}",2026-10-23
+﻿time,start,end,universe,prices_rows,prices_failed,valuation,type,target,prices,benchmarks,institutional,last_price_date,macro
+2026-09-20 21:03:00,2023-09-20,2026-09-20,core,36549.0,0.0,"{'dates_requested': 37, 'rows_downloaded': 37259}",,,,,,,
+2026-09-20 23:29:15,2022-09-01,2026-09-20,core,49250.0,0.0,"{'dates_requested': 13, 'rows_downloaded': 12736}",,,,,,,
+2026-09-29 12:28:52,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-09-29,"{'rows': 750, 'failed': 0}",{'rows': 60},"{'dates_requested': 10, 'rows_downloaded': 10794}",2026-09-29,
+2026-09-30 13:03:46,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-09-30,"{'rows': 300, 'failed': 0}",{'rows': 21},"{'dates_requested': 10, 'rows_downloaded': 10827}",2026-09-30,
+2026-10-01 13:58:21,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1082}",auto,2026-10-01,"{'rows': 350, 'failed': 0}",{'rows': 25},"{'dates_requested': 10, 'rows_downloaded': 10832}",2026-10-01,
+2026-10-02 07:50:10,,,300,,,"{'dates_requested': 1, 'rows_downloaded': 0}",auto,2026-10-02,"{'rows': 241162, 'failed': 0}",{'rows': 29},"{'dates_requested': 10, 'rows_downloaded': 9754}",2026-10-02,
+2026-10-02 11:43:17,,,,,,"{'dates_requested': 62, 'rows_downloaded': 58136}",auto,2026-10-02,"{'rows': 629137, 'failed': 0}",{'rows': 7713},"{'dates_requested': 10, 'rows_downloaded': 10846}",2026-10-02,
+2026-10-02 13:14:48,,,,,,"{'dates_requested': 0, 'rows_downloaded': 0}",auto,2026-10-02,"{'rows': 0, 'failed': 0}",{'rows': 0},"{'dates_requested': 10, 'rows_downloaded': 9737}",2026-10-02,
+2026-10-05 15:20:36,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-10-05,"{'rows': 2700, 'failed': 0}",{'rows': 36},"{'dates_requested': 10, 'rows_downloaded': 9727}",2026-10-05,
+2026-10-06 13:40:50,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-10-06,"{'rows': 1800, 'failed': 0}",{'rows': 23},"{'dates_requested': 10, 'rows_downloaded': 9713}",2026-10-06,
+2026-10-07 14:01:22,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1082}",auto,2026-10-07,"{'rows': 2099, 'failed': 0}",{'rows': 25},"{'dates_requested': 10, 'rows_downloaded': 9724}",2026-10-07,
+2026-10-08 14:06:13,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1082}",auto,2026-10-08,"{'rows': 2399, 'failed': 0}",{'rows': 29},"{'dates_requested': 10, 'rows_downloaded': 9719}",2026-10-08,
+2026-10-09 13:51:31,,,,,,"{'dates_requested': 0, 'rows_downloaded': 0}",auto,2026-10-09,"{'rows': 2400, 'failed': 0}",{'rows': 29},"{'dates_requested': 10, 'rows_downloaded': 9669}",2026-10-08,
+2026-10-12 16:11:51,,,,,,"{'dates_requested': 0, 'rows_downloaded': 0}",auto,2026-10-12,"{'rows': 2400, 'failed': 0}",{'rows': 35},"{'dates_requested': 10, 'rows_downloaded': 9671}",2026-10-08,
+2026-10-13 14:38:37,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-10-13,"{'rows': 2700, 'failed': 0}",{'rows': 27},"{'dates_requested': 10, 'rows_downloaded': 9674}",2026-10-13,
+2026-10-14 12:27:52,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-10-14,"{'rows': 2103, 'failed': 0}",{'rows': 25},"{'dates_requested': 10, 'rows_downloaded': 9659}",2026-10-14,
+2026-10-15 12:11:42,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1081}",auto,2026-10-15,"{'rows': 2399, 'failed': 0}",{'rows': 29},"{'dates_requested': 10, 'rows_downloaded': 9593}",2026-10-15,
+2026-10-16 11:58:21,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1082}",auto,2026-10-16,"{'rows': 2699, 'failed': 0}",{'rows': 33},"{'dates_requested': 10, 'rows_downloaded': 9620}",2026-10-16,
+2026-10-19 13:33:59,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1083}",auto,2026-10-19,"{'rows': 3000, 'failed': 0}",{'rows': 40},"{'dates_requested': 10, 'rows_downloaded': 9646}",2026-10-19,
+2026-10-19 14:01:58,,,,,,"{'dates_requested': 0, 'rows_downloaded': 0}",auto,2026-10-19,"{'rows': 0, 'failed': 0}",{'rows': 0},"{'dates_requested': 10, 'rows_downloaded': 9627}",2026-10-19,
+2026-10-20 12:17:39,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1084}",auto,2026-10-20,"{'rows': 2100, 'failed': 0}",{'rows': 28},"{'dates_requested': 10, 'rows_downloaded': 9559}",2026-10-20,
+2026-10-21 12:29:48,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1084}",auto,2026-10-21,"{'rows': 2400, 'failed': 0}",{'rows': 32},"{'dates_requested': 10, 'rows_downloaded': 9593}",2026-10-21,
+2026-10-22 12:32:04,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1084}",auto,2026-10-22,"{'rows': 2700, 'failed': 0}",{'rows': 36},"{'dates_requested': 10, 'rows_downloaded': 9509}",2026-10-22,
+2026-10-23 12:12:46,,,,,,"{'dates_requested': 0, 'rows_downloaded': 0}",auto,2026-10-23,"{'rows': 2700, 'failed': 0}",{'rows': 36},"{'dates_requested': 10, 'rows_downloaded': 9397}",2026-10-22,
+2026-10-26 13:38:34,,,,,,"{'dates_requested': 1, 'rows_downloaded': 0}",auto,2026-10-26,"{'rows': 2999, 'failed': 0}",{'rows': 39},"{'dates_requested': 10, 'rows_downloaded': 8370}",2026-10-23,
+2026-10-27 12:44:39,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1087}",auto,2026-10-27,"{'rows': 3299, 'failed': 0}",{'rows': 43},"{'dates_requested': 10, 'rows_downloaded': 8373}",2026-10-27,"{'rows': 37178, 'last': '2026-10-27'}"
