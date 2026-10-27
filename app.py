@@ -3,10 +3,11 @@ import pandas as pd
 import streamlit as st
 
 from src import config, store
+from src import backtest as bt
 from src.backtest import STRATEGIES, STRATEGY_DESC
 from src.metrics import fmt_num, fmt_pct
 from src.ui import charts
-from src.ui.common import (clear_caches, get_result, holdings_block, metric_cards, portfolio_labels,
+from src.ui.common import (HOLDINGS_NOTE, clear_caches, get_result, holdings_block, metric_cards, portfolio_labels, stock_info,
                            require_prices, setup_page, show_notes, sidebar_data, sidebar_strategy)
 
 setup_page("首頁")
@@ -97,7 +98,12 @@ labels = portfolio_labels(names)
 show_notes([n for n in res.notes if n not in ds.notes])
 
 st.subheader(f"🗓️ 最新選股（{res.latest_date:%Y-%m-%d} 收盤後）")
-st.caption(f"樣本外回測期間：{res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}｜每 {config.HOLD_DAYS} 個交易日調倉｜"
+if res.rebalance_dates:
+    _last_rb = pd.Timestamp(res.rebalance_dates[-1])
+    _next_rb = bt.next_rebalance(res.rebalance_dates[0], _last_rb)
+    st.markdown(f"調倉固定**每 {config.REBALANCE_WEEKS} 週**一次：最近一次 **{_last_rb:%Y-%m-%d}**，下一次預定 **{_next_rb:%Y-%m-%d}**（遇假日順延）。"
+                + ("今天就是調倉日。" if _last_rb == pd.Timestamp(res.latest_date) else "下面是用最新收盤價算出的名單，供下次調倉參考。"))
+st.caption(f"樣本外回測期間：{res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}｜每 {config.REBALANCE_WEEKS} 週調倉｜"
            f"{params.weighting}｜Top {params.top_n}｜模型 {params.model_name}｜"
            f"{'風險控制：避開跌破年線與最震盪的股票、大盤跌破年線持股減半' if params.risk_control else '目標最高報酬（不做風險控制）'}")
 
@@ -118,12 +124,14 @@ if params.risk_control and not res.risk_log.empty:
                   "加權指數在年線之上" if expo >= 0.99 else "加權指數跌破年線，持股減半"))
 metric_cards(cards, min_width=200)
 
+pick_info = stock_info(res, ds, res.latest_date)
 pick_cols = st.columns(len(STRATEGIES))
 for col, strat in zip(pick_cols, STRATEGIES):
     with col:
         st.markdown(f"**{strat}**<br><span style='opacity:.7;font-size:.9em'>{STRATEGY_DESC[strat]}</span>",
                     unsafe_allow_html=True)
-        holdings_block(res.latest[res.latest["portfolio"] == strat], names, strat)
+        holdings_block(res.latest[res.latest["portfolio"] == strat], names, strat, info=pick_info)
+st.caption(HOLDINGS_NOTE)
 
 st.plotly_chart(charts.nav_chart(res.returns, labels, "累積淨值（樣本外，扣除交易成本）"), width="stretch")
 st.caption("實線 = 策略；虛線 = 比較基準。詳細績效、持股比例、歷次持股請看「策略回測」頁；"

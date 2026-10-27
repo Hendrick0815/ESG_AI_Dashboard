@@ -1,13 +1,14 @@
 """策略回測：績效比較（可選期間）、歷次持股、換股成本、方法說明。"""
+import numpy as np
 import pandas as pd
 import streamlit as st
 
-from src import config, forecast
+from src import backtest as bt, config, forecast
 from src.backtest import STRATEGIES
 from src.metrics import format_table, performance_table
 from src.ui import charts
-from src.ui.common import (get_result, holdings_block, portfolio_labels, require_prices, setup_page,
-                           show_notes, sidebar_data, sidebar_strategy)
+from src.ui.common import (HOLDINGS_NOTE, get_result, holdings_block, metric_cards, portfolio_labels, require_prices,
+                           setup_page, show_notes, sidebar_data, sidebar_strategy, stock_info)
 from src.utils import to_csv_bytes
 
 setup_page("策略回測", "📈")
@@ -21,7 +22,7 @@ names = ds.names
 labels = portfolio_labels(names)
 
 st.title("📈 策略回測")
-st.caption(f"樣本外期間 {res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}，共 {len(res.rebalance_dates)} 次調倉")
+st.caption(f"樣本外期間 {res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}，共 {len(res.rebalance_dates)} 次調倉（每 {config.REBALANCE_WEEKS} 週一次）")
 show_notes(res.notes)
 
 tab1, tab2, tab4, tab5 = st.tabs(["績效比較", "歷次持股", "換股與成本", "方法說明"])
@@ -77,41 +78,79 @@ with tab1:
     st.download_button("下載每日報酬 CSV", to_csv_bytes(res.returns), "strategy_returns.csv", "text/csv")
 
 with tab2:
-    dates = sorted(res.holdings["date"].unique(), reverse=True)
+    dates = sorted({pd.Timestamp(x) for x in res.rebalance_dates} & set(pd.to_datetime(res.holdings["date"])),
+                   reverse=True)
     if not dates:
         st.info("沒有持股紀錄")
     else:
-        d = st.selectbox("調倉日", dates, format_func=lambda x: pd.Timestamp(x).strftime("%Y-%m-%d"))
+        WD = "一二三四五六日"
+        first_rb = pd.Timestamp(res.rebalance_dates[0])
+        next_after = {d: (dates[i - 1] if i > 0 else bt.next_rebalance(first_rb, d)) for i, d in enumerate(dates)}
+        d = st.selectbox("調倉日（每 %d 週一次，遇假日順延）" % config.REBALANCE_WEEKS, dates,
+                         format_func=lambda x: f"{x:%Y-%m-%d}（週{WD[x.weekday()]}）→ {next_after[x]:%m/%d}"
+                                               + ("　持有中" if x == dates[0] else ""))
         d = pd.Timestamp(d)
+        end = next_after[d]
         trading_days = pd.DatetimeIndex(sorted(ds.prices["date"].unique()))
-        window = forecast.holding_window(res.rebalance_dates, res.latest_date, d, trading_days, params.hold_days)
-        later = [x for x in res.rebalance_dates if pd.Timestamp(x) > d]
+        window = forecast.holding_window(res.rebalance_dates, res.latest_date, d, trading_days, params.hold_days,
+                                         next_date=end)
+        info = stock_info(res, ds, d)
+
+        # 先算三個策略的預估，再用「同一個縱軸範圍」畫圖，單位與刻度一致才能直接比較
+        fcs, subs = {}, {}
+        for strat in STRATEGIES:
+            sub = res.holdings[(res.holdings["date"] == d) & (res.holdings["portfolio"] == strat)]
+            subs[strat] = sub
+            if not sub.empty and len(window):
+                fcs[strat] = forecast.holding_forecast(sub, res.evaluation, res.returns, ds.benchmarks, strat, d,
+                                                       window, params.hold_days)["path"]
+        st.markdown(f"**持有期間**：{d:%Y-%m-%d} 收盤買進 → {end:%Y-%m-%d} 調倉（共 {len(window)} 個交易日"
+                    + ("，尚未走完" if d == dates[0] and end > pd.Timestamp(res.latest_date) else "") + "）")
+        if fcs:
+            items = {}
+            for strat, path in fcs.items():
+                last = path.iloc[-1]
+                act = path["actual"].dropna()
+                items[strat] = {k: float(last[k]) for k in ["expected", "lo68", "hi68", "lo95", "hi95"]}
+                items[strat]["actual"] = float(act.iloc[-1]) if len(act) > 1 else None
+            st.markdown("**期末報酬預估比較**（同一條橫軸：圓圈＝模型預估、粗線＝68% 區間、細線＝95% 區間、菱形＝實際）")
+            st.plotly_chart(charts.forecast_compare(items, height=70 + 70 * len(items)), width="stretch")
+            # 縱軸依 68% 區間與實際走勢決定（95% 區間太寬會把線壓扁，超出部分讓它延伸到圖外）
+            lo = min(p["lo68"].min() for p in fcs.values())
+            hi = max(p["hi68"].max() for p in fcs.values())
+            for p in fcs.values():
+                for c in ["actual", "market"]:
+                    if p[c].notna().any():
+                        lo, hi = min(lo, p[c].min()), max(hi, p[c].max())
+            step = 0.05
+            y_range = (np.floor(lo / step) * step - 0.01, np.ceil(hi / step) * step + 0.01)
+
         cols = st.columns(len(STRATEGIES))
         for col, strat in zip(cols, STRATEGIES):
             with col:
                 st.markdown(f"**{strat}**")
-                sub = res.holdings[(res.holdings["date"] == d) & (res.holdings["portfolio"] == strat)]
-                holdings_block(sub, names, strat, "該期空手（沒有可用分數）")
-                if sub.empty or len(window) == 0:
+                holdings_block(subs[strat], names, strat, "該期空手（沒有可用分數）", info=info)
+                if strat not in fcs:
                     continue
-                fc = forecast.holding_forecast(sub, res.evaluation, res.returns, ds.benchmarks, strat, d, window,
-                                               params.hold_days)
-                path = fc["path"]
-                st.plotly_chart(charts.forecast_chart(path, strat, "持有期間預估走勢", height=300), width="stretch")
-                end_exp = path["expected"].iloc[-1]
-                lo, hi = path["lo68"].iloc[-1], path["hi68"].iloc[-1]
-                msg = f"預估期末 **{end_exp:+.1%}**（68% 區間 {lo:+.1%} ～ {hi:+.1%}）"
+                path = fcs[strat]
+                st.plotly_chart(charts.forecast_chart(path, strat, "持有期間走勢（累積報酬）", height=320,
+                                                      y_range=y_range, end_date=end), width="stretch")
+                last = path.iloc[-1]
                 act = path["actual"].dropna()
+                cards = [("預估期末", f"{last['expected']:+.1%}", f"68% 區間 {last['lo68']:+.1%} ～ {last['hi68']:+.1%}")]
                 if len(act) > 1:
-                    msg += f"｜實際 **{act.iloc[-1]:+.1%}**" + ("" if len(act) == len(path) else f"（到 {path.loc[act.index[-1], 'date']:%m/%d}）")
-                st.caption(msg)
-        nxt = f"下一次調倉 {pd.Timestamp(later[0]):%Y-%m-%d}" if later else f"之後 {params.hold_days} 個交易日（尚未發生的日子以平日估算，未扣國定假日）"
+                    upto = "" if len(act) == len(path) else f"（到 {path.loc[act.index[-1], 'date']:%m/%d}）"
+                    mk = path["market"].dropna()
+                    cards.append((f"實際{upto}", f"{act.iloc[-1]:+.1%}",
+                                  f"加權指數 {mk.iloc[-1]:+.1%}" if len(mk) > 1 else ""))
+                metric_cards(cards, min_width=140)
+        st.caption(HOLDINGS_NOTE)
         st.caption(
-            f"**持有期間**：{d:%Y-%m-%d} 收盤買進 → {nxt}。"
-            "**模型預估（虛線）**＝加權指數過去一年平均日報酬 ＋ 持股的 AI 預測超額報酬（依權重平均），平均分攤到持有期間；"
-            "**色帶**＝依該策略過去 60 個交易日的波動，約 68%（深）／95%（淺）的機率會落在範圍內；"
-            "**實線**＝實際走勢（已扣當天交易成本）。預估只用調倉日以前的資料。"
-            "注意：AI 分數的大小只適合排序，當作報酬預估時通常偏保守，實際漲跌主要由大盤決定。")
+            "**走勢圖**：三張圖縱軸範圍與刻度相同（每格 5%），都是從調倉日收盤起算的累積報酬。"
+            "**虛線**＝模型預估（加權指數過去一年平均日報酬 ＋ 持股 AI 預測超額的權重平均，平均分攤到持有期間）；"
+            "**色帶**＝依該策略過去 60 個交易日的波動，約 68%（深色）／95%（淺色，超出縱軸的部分不顯示）機率落在範圍內；"
+            "**實線**＝實際走勢（已扣當天交易成本）；**灰色點線**＝加權指數實際走勢。預估只用調倉日以前的資料。"
+            "AI 分數適合排序，當成報酬預估時通常偏保守，實際漲跌主要由大盤決定。")
         st.download_button("下載全部持股紀錄 CSV", to_csv_bytes(res.holdings), "holdings.csv", "text/csv")
 
 with tab4:
@@ -149,7 +188,7 @@ with tab5:
 用來區分「還在噴的飆股」和「已經從高點回落的飆股」。加入後「單純 AI」年化從約 100% 提高到約 106%（3 組隨機種子平均）。
 
 #### 訓練方式：滾動式（walk-forward）
-- 每 {config.RETRAIN_EVERY} 次調倉（約 {config.RETRAIN_EVERY * config.HOLD_DAYS} 個交易日）重新訓練一次，只用「在訓練當天已經知道結果」的樣本
+- 每 {config.RETRAIN_EVERY} 次調倉（約 {config.RETRAIN_EVERY * config.REBALANCE_WEEKS} 週）重新訓練一次，只用「在訓練當天已經知道結果」的樣本
   （樣本日期 ≤ 調倉日往前 {params.hold_days} 個交易日）；訓練樣本每 5 個交易日取一天。
 - 缺值用訓練集的中位數補，不會用到測試期資訊。
 - **訓練資料從 {config.HISTORY_START[:7]} 起；樣本外績效從 {res.test_start:%Y-%m-%d} 起**（TEJ ESG 評等第一次公告日），
@@ -164,17 +203,20 @@ with tab5:
 預設設定以**報酬最大化**為唯一目標，不考慮最大回撤：
 1. **股票池 {n_universe} 檔**：近 20 個交易日平均成交金額最大的上市櫃普通股（市值前 50 大一定納入）。
 2. **選前 {config.DEFAULT_TOP_N} 檔、等權**：永遠滿倉，不設停損、不因大盤轉弱減碼。
-3. **每 {config.HOLD_DAYS} 個交易日調倉**，模型每 {config.RETRAIN_EVERY} 次調倉重新訓練一次。
+3. **每 {config.REBALANCE_WEEKS} 週調倉**（固定同一個星期幾，遇假日順延到下一個交易日），模型每 {config.RETRAIN_EVERY} 次調倉重新訓練一次。
 4. **怎麼選出這組設定**：在近兩年半（300 檔）比較 Top N、等權／集中加權、調倉與重訓頻率；
    再用 2018 年底起約 8 年的回測比較特徵與產業的用法（期間較長、包含 2020 與 2022 年的大跌），各用 3 組隨機種子重跑，
    選平均最好、且不是只有單一參數特別好的組合。
 
 #### 產業
-- **同一產業最多 {config.MAX_PER_INDUSTRY} 檔**（{"開啟" if config.MAX_PER_INDUSTRY else "關閉"}）：分數高的股票若同產業已經有 {config.MAX_PER_INDUSTRY} 檔，就跳過、改選下一名。
-  2018～2026 年的測試中報酬幾乎不變（約 106% → 105%），最大回撤從約 −47% 改善到約 −42%，避免全部押在同一個產業。
-- 也試過另外兩種做法，**報酬都明顯變差，所以沒有採用**：
-  把「產業近 1 月報酬、產業季線乖離、個股相對產業強弱」當成模型特徵（約 85%）；只買產業在季線之上的股票（約 78%）。
-  原因是強勢股常常在產業轉強之前就先漲，等產業趨勢確認時已經太晚。
+選股**不限制同一產業的檔數**，也不排除任何產業：只要個股分數夠高就選。產業資訊放在「產業與籌碼」頁供參考。
+我們測試過四種「把產業納入選股」的做法（2018 年底起約 8 年回測），**報酬都比不考慮產業低**，所以預設都不採用：
+- 產業趨勢加分（AI 排名與產業近 1 月報酬排名加權）：產業權重 0% 約 110%、5% 約 104%、10% 約 98%、20% 約 85%，越加越差；改用產業近 3／6 個月報酬或產業季線乖離也一樣。
+- 把產業趨勢當成模型特徵：約 85%（不加時約 100%）。
+- 只買產業在季線之上的股票：約 78%。
+- 同一產業最多 5 檔：報酬略降（約 106% → 105%），回撤較小，但會限制選股，已取消。
+
+可能原因：強勢股常在產業轉強之前就先漲，等產業趨勢確認時已經太晚；而過去一個月最強的產業，接下來也常出現漲多拉回。
 
 代價：持股集中在高波動股票，最大回撤約 −40%，比大盤深；調倉次數多，交易成本也較高（已反映在報酬裡）。
 
@@ -185,7 +227,7 @@ with tab5:
 3. **大盤跌破年線持股減半**：加權指數在 {config.MARKET_MA} 日均線之下時，持股降為 {config.MARKET_WEAK_EXPOSURE:.0%}、其餘放現金。
 
 #### 回測規則
-- **每 {config.HOLD_DAYS} 個交易日**調倉一次，以當天收盤價換股，報酬從**下一個交易日**開始計算。
+- **每 {config.REBALANCE_WEEKS} 週**調倉一次（從回測起點起算，固定同一個星期幾，遇假日順延），以當天收盤價換股，報酬從**下一個交易日**開始計算。
 - 持有期間權重隨股價漂移，{params.weighting}配置；未投入的部分為現金（報酬 0）。
 - 交易成本：買進手續費 0.1425%、賣出手續費 0.1425% + 證交稅 0.3%，換股與調整持股比例都會扣。
 - ESG 與估值資料一律依**公告日**對齊：某天只會用到當天以前已公告的資料

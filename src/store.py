@@ -386,6 +386,7 @@ class Dataset:
     listing: pd.DataFrame                   # ticker,code,name,market,industry
     notes: List[str] = field(default_factory=list)
     flows: pd.DataFrame = field(default_factory=pd.DataFrame)   # date,ticker,foreign_net,trust_net,dealer_net,total_net
+    eligible: Optional[pd.DataFrame] = None   # 逐期股票池 date,ticker（研究版使用；None = 用 prices 裡全部股票）
 
     @property
     def names(self) -> Dict[str, str]:

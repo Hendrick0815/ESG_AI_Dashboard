@@ -28,6 +28,7 @@ TRADING_DAYS = 252
 RISK_FREE_RATE = 0.01           # 年化無風險利率（Sharpe 使用）
 COMMISSION = 0.001425           # 手續費（買、賣各一次）
 SELL_TAX = 0.003                # 證交稅（僅賣出）
+SLIPPAGE = 0.0                  # 額外滑價（每邊，比例）；論文敏感度分析用 0.001／0.002／0.003
 
 # 比較基準：^TWII 加權指數、0050 台灣50、00850 元大臺灣ESG永續、00878 國泰永續高股息
 BENCHMARKS = ["^TWII", "0050.TW", "00850.TW", "00878.TW"]
@@ -74,7 +75,11 @@ DEFAULT_ESG_WEIGHT = 0.3        # AI+ESG 混合分數中 ESG 的比重
 DEFAULT_N_ESTIMATORS = 100
 RETRAIN_EVERY = 3               # 每 3 次調倉（約 30 個交易日）重新訓練一次模型；比每 6 次（約一季）年化高約 10 個百分點
 CACHE_DIR = Path(os.getenv("ESG_CACHE_DIR", OUTPUT_DIR / "cache"))  # 回測結果存檔，重開網頁不用重算
-HOLD_DAYS = 10                  # 每 10 個交易日調倉一次；模型預測未來 10 個交易日的報酬
+HOLD_DAYS = 10                  # 模型預測未來 10 個交易日（約 2 週）的報酬
+# 調倉日：'calendar' = 以回測起點為基準，每 REBALANCE_WEEKS 週固定同一天（遇假日順延到下一個交易日）；
+#         'trading_days' = 每 HOLD_DAYS 個交易日（論文正式版本使用，見 research_config.json）
+REBALANCE_MODE = "calendar"
+REBALANCE_WEEKS = 2
 MIN_TRAIN_DAYS = 250            # 至少一年訓練資料；資料不足時改用前 50%
 
 # 集中加權（原 generate_backtest.py）：第一名 30%，前五名約 69%
@@ -96,10 +101,14 @@ EXPOSURE_STEP = 0.1             # 持股比例的最小調整單位
 # ---- 選股特徵與產業 ----
 # 2018-11～2026-10 回測、3 組隨機種子比較（單純 AI、等權 Top 20 年化）：
 #   原本特徵 100%｜＋見頂特徵 106%｜＋產業特徵 85%（2 組種子）｜兩者都加 72%（2 組）｜＋見頂＋只買產業趨勢向上 78%（1 組）
-#   ＋見頂＋同產業最多 5 檔 105%（最大回撤 −42%，不限制時 −47%）
+#   ＋見頂＋同產業最多 5 檔 105%（最大回撤 −42%，不限制時 −47%）——使用者要求不限制產業檔數，已改回 0
+#   產業趨勢加分（AI 排名與產業趨勢排名加權，1 組種子）：w=0 110%｜w=0.05 104%｜w=0.1 98%｜w=0.2 85%；
+#   改用產業近 3／6 月報酬或季線乖離也一樣越加越差 → 預設不加分，產業資訊放在「產業與籌碼」頁參考
 USE_PEAK_FEATURES = True        # 見頂訊號：距 20 日高點跌幅、高點距今天數、連續下跌天數、量能比、短期反轉
 USE_INDUSTRY_FEATURES = False   # 產業趨勢＋個股相對產業強弱當模型特徵：回測變差，預設不用
-MAX_PER_INDUSTRY = 5            # 同一產業最多持有幾檔（0 = 不限制）：報酬幾乎不變、回撤小約 5 個百分點
+MAX_PER_INDUSTRY = 0            # 同一產業最多持有幾檔（0 = 不限制，預設）
 INDUSTRY_TREND_FILTER = False   # True：只買所屬產業在季線之上的股票：回測變差，預設不用
+INDUSTRY_TREND_WEIGHT = 0.0     # AI 分數 =（1−w）× AI 排名 ＋ w × 產業趨勢排名（不排除、不限制檔數）；回測越加越差，預設 0
+INDUSTRY_TREND_MEASURE = "ind_mom_20"   # 產業趨勢指標：ind_mom_20／60／120（近 1／3／6 月報酬）、ind_gap_ma60
 
 INSTITUTIONAL_FILE = PROCESSED_DIR / "institutional.csv"   # 三大法人買賣超（證交所 T86）

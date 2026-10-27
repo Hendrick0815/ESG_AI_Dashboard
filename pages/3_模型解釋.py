@@ -77,7 +77,7 @@ with st.expander("使用的特徵"):
     st.caption(f"ESG 資料涵蓋率（回測樣本中有 ESG 分數的比例）：{info['esg_coverage']:.0%}")
 
 with st.expander("訓練紀錄"):
-    log = res.train_log.copy()
+    log = res.train_log.drop(columns=["importances"], errors="ignore").copy()
     if log.empty:
         st.info("沒有訓練紀錄")
     else:
@@ -108,7 +108,7 @@ with st.expander("訓練紀錄"):
                 f"Top {params.top_n} 每期超額": fmt_pct(np.mean(ex)) if ex else "尚未揭曉",
             })
         st.markdown(
-            f"模型**每 {config.RETRAIN_EVERY} 次調倉重新訓練一次**（約每 {config.RETRAIN_EVERY * params.hold_days} 個交易日），"
+            f"模型**每 {config.RETRAIN_EVERY} 次調倉重新訓練一次**（約每 {config.RETRAIN_EVERY * config.REBALANCE_WEEKS} 週），"
             "每次都把到當時為止「已經知道結果」的資料全部拿來學，所以樣本數會越來越多。每一列代表一個模型：")
         st.markdown(
             f"- **學習的資料期間**：模型看過的歷史資料。結束日比訓練日早約 {params.hold_days} 個交易日，因為最後這段的「未來 10 天報酬」在訓練當天還不知道，不能拿來學。\n"

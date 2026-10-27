@@ -127,7 +127,8 @@ def walk_forward(panel: pd.DataFrame, features: List[str], rebalance_dates: List
             model = Model(model_name, n_estimators).fit(X, y)
             used = cols
             train_log.append({"rebalance_date": t, "train_end": cutoff, "n_samples": len(train),
-                              "n_features": len(cols)})
+                              "n_features": len(cols),
+                              "importances": dict(zip(cols, map(float, model.feature_importances_)))})
         today = panel[panel["date"] == t].dropna(subset=required)
         if today.empty:
             continue

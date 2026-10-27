@@ -83,7 +83,15 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
     if info["esg_static"]:
         notes.append("⚠️ ESG 以「最新一期」回填到所有歷史日期，回測含前視偏差，只能當對照組。")
 
-    trading_days = pd.DatetimeIndex(sorted(panel["date"].unique()))
+    full_panel = panel
+    elig = getattr(ds, "eligible", None)
+    if elig is not None and not elig.empty:
+        # 逐期股票池：每天只保留「當天以前 20 日成交金額前 N 大」的股票（訓練樣本與選股都適用）；
+        # 已持有的股票之後掉出股票池仍會照實際報酬計算（用 full_panel 的報酬）。
+        key = elig[["date", "ticker"]].assign(_in=1)
+        panel = panel.merge(key, on=["date", "ticker"], how="inner").drop(columns="_in")
+
+    trading_days = pd.DatetimeIndex(sorted(full_panel["date"].unique()))
     if len(trading_days) < 120:
         raise ValueError(f"只有 {len(trading_days)} 個交易日，資料太短，建議至少 1 年。")
     test_start = _first_test_day(trading_days, p.hold_days)
@@ -105,7 +113,7 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
         raise ValueError("訓練樣本不足，模型無法產生預測。請拉長資料期間或擴大股票池。")
 
     from .features import RISK_COLS
-    snap_cols = ["date", "ticker"] + [c for c in ["esg_total", "controversy_score", "eps", "ind_gap_ma60", *RISK_COLS]
+    snap_cols = ["date", "ticker"] + [c for c in ["esg_total", "controversy_score", "eps", "ind_gap_ma60", "ind_mom_20", "ind_mom_60", "ind_mom_120", *RISK_COLS]
                                       if c in panel.columns]
     # 單純 ESG 不需要模型：沒有預測的股票也要納入
     snaps = panel[panel["date"].isin(pred_dates)][snap_cols].merge(wf.predictions, on=["date", "ticker"], how="left")
@@ -132,7 +140,7 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
     holdings = pd.concat(hold_rows, ignore_index=True) if hold_rows else \
         pd.DataFrame(columns=["date", "portfolio", "ticker", "weight", "score"])
 
-    ret_wide = panel.pivot_table(index="date", columns="ticker", values="ret_1d").sort_index()
+    ret_wide = full_panel.pivot_table(index="date", columns="ticker", values="ret_1d").sort_index()
     risk = None
     if p.risk_control:
         if ds.benchmarks.empty or config.MARKET_INDEX not in set(ds.benchmarks["ticker"]):
@@ -168,6 +176,11 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
                      f"在那之前 AI+ESG 等同單純 AI、單純 ESG 為空手。補齊 TEJ 歷史各期評等即可改善。")
 
     latest = holdings[holdings["date"] == last_day] if not holdings.empty else holdings
+    import os
+    if os.getenv("ESG_KEEP_PANEL") == "1":          # 研究腳本需要（permutation importance）；網站不保留以免快取過大
+        notes.append("__panel_kept__")
+        Result.panel = panel
+        Result.wf_features = wf.features
     return Result(
         params=p, panel_info=info, test_start=bt_start, rebalance_dates=schedule, latest_date=last_day,
         returns=returns, perf=performance_table(returns), holdings=holdings, latest=latest,

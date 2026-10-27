@@ -99,11 +99,11 @@ def add_technical(prices: pd.DataFrame, hold_days: int) -> pd.DataFrame:
 
 
 def add_industry(panel: pd.DataFrame, industries: Optional[Dict[str, str]]) -> pd.DataFrame:
-    """產業趨勢（僅供「產業與籌碼」頁參考，不影響選股）：同產業股票的等權指數。"""
+    """產業趨勢：同產業股票的等權指數。ind_mom_20／60／120 = 產業近 1／3／6 個月報酬，ind_gap_ma60 = 產業季線乖離。"""
     df = panel
     df["industry"] = df["ticker"].map(industries or {}) if industries else np.nan
     if df["industry"].isna().all():
-        for c in ["ind_mom_20", "ind_gap_ma60", "ind_n", "ind_up"]:
+        for c in ["ind_mom_20", "ind_mom_60", "ind_mom_120", "ind_gap_ma60", "ind_n", "ind_up"]:
             df[c] = np.nan
         return df
     ind = (df.dropna(subset=["industry", "ret_1d"])
@@ -112,8 +112,11 @@ def add_industry(panel: pd.DataFrame, industries: Optional[Dict[str, str]]) -> p
     ind["nav"] = (1 + ind["mean"]).groupby(ind["industry"]).cumprod()
     ig = ind.groupby("industry")["nav"]
     ind["ind_mom_20"] = ig.pct_change(20)
+    ind["ind_mom_60"] = ig.pct_change(60)
+    ind["ind_mom_120"] = ig.pct_change(120)
     ind["ind_gap_ma60"] = ind["nav"] / _roll(ig, 60, "mean") - 1
-    ind = ind.rename(columns={"size": "ind_n"})[["industry", "date", "ind_mom_20", "ind_gap_ma60", "ind_n"]]
+    ind = ind.rename(columns={"size": "ind_n"})[["industry", "date", "ind_mom_20", "ind_mom_60", "ind_mom_120",
+                                                    "ind_gap_ma60", "ind_n"]]
     df = df.merge(ind, on=["industry", "date"], how="left")
     df["ind_up"] = ((df["ind_gap_ma60"] > 0) & (df["ind_mom_20"] > 0)).astype(float).where(df["ind_gap_ma60"].notna())
     return df

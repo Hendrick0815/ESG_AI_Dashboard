@@ -28,3 +28,9 @@ outputs/cache/*.tmp
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# 研究用原始逐日行情（數百 MB，不放 GitHub；manifest.json 記錄雜湊值，可用 scripts/ 重新下載）
+data/raw/daily_quotes/
+data/raw/finmind_twse/
+outputs/research/*_test/
+outputs/research/preview/

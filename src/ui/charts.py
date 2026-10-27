@@ -267,28 +267,78 @@ def _rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({int(h[0:2], 16)},{int(h[2:4], 16)},{int(h[4:6], 16)},{alpha})"
 
 
-def forecast_chart(path: pd.DataFrame, strategy: str, title: str = "", height: int = 300) -> go.Figure:
-    """持有期間預估：95%／68% 區間（色帶）、模型預期（虛線）、實際走勢（實線）、加權指數（灰色細線）。"""
+def forecast_chart(path: pd.DataFrame, strategy: str, title: str = "", height: int = 300,
+                   y_range: Optional[tuple] = None, end_date: Optional[pd.Timestamp] = None) -> go.Figure:
+    """持有期間預估：95%／68% 區間（色帶）、模型預期（虛線）、實際走勢（實線）、加權指數（灰色點線）。
+    y_range：三個策略共用同一個縱軸範圍與刻度，才能直接比較；期末標出預估值與實際值。"""
     color = _c(STRATEGY_COLORS.get(strategy, SERIES_PALETTE[0]))
     x = path["date"]
     fig = go.Figure()
-    for lo, hi, alpha, name in [("lo95", "hi95", 0.12, "95% 區間"), ("lo68", "hi68", 0.22, "68% 區間")]:
+    for lo, hi, alpha, name in [("lo95", "hi95", 0.16, "95% 區間"), ("lo68", "hi68", 0.32, "68% 區間")]:
         fig.add_trace(go.Scatter(x=x, y=path[hi], mode="lines", line=dict(width=0), showlegend=False,
                                  hoverinfo="skip"))
         fig.add_trace(go.Scatter(x=x, y=path[lo], mode="lines", line=dict(width=0), fill="tonexty",
-                                 fillcolor=_rgba(color, alpha), name=name, hoverinfo="skip"))
+                                 fillcolor=_rgba(color, alpha), name=name, hoverinfo="skip", showlegend=False))
     fig.add_trace(go.Scatter(x=x, y=path["expected"], mode="lines", name="模型預估",
-                             line=dict(color=color, width=2, dash="dash"), hovertemplate="%{y:+.1%}"))
-    if path["actual"].notna().sum() > 1:
-        fig.add_trace(go.Scatter(x=x, y=path["actual"], mode="lines+markers", name="實際",
-                                 line=dict(color=color, width=2.6), marker=dict(size=4), hovertemplate="%{y:+.1%}"))
+                             line=dict(color=color, width=2.2, dash="dash"),
+                             hovertemplate="預估 %{y:+.1%}<extra></extra>"))
+    last = path.iloc[-1]
+    act = path["actual"].dropna()
+    has_act = len(act) > 1
+    above = (not has_act) or last["expected"] >= act.iloc[-1]
+    fig.add_annotation(x=last["date"], y=last["expected"], text=f"預估 {last['expected']:+.1%}", showarrow=False,
+                       xanchor="right", yanchor="bottom" if above else "top", yshift=6 if above else -6,
+                       font=dict(size=13, color=color))
+    if has_act:
+        fig.add_trace(go.Scatter(x=path.loc[act.index, "date"], y=act, mode="lines+markers", name="實際",
+                                 line=dict(color=color, width=2.8), marker=dict(size=5),
+                                 hovertemplate="實際 %{y:+.1%}<extra></extra>"))
+        fig.add_annotation(x=path.loc[act.index[-1], "date"], y=act.iloc[-1], text=f"實際 {act.iloc[-1]:+.1%}",
+                           showarrow=True, arrowhead=0, ax=-48, ay=0, xanchor="right", font=dict(size=13, color=color),
+                           bgcolor=_bg(), bordercolor=color, borderwidth=1, borderpad=2)
     if path["market"].notna().sum() > 1:
-        fig.add_trace(go.Scatter(x=x, y=path["market"], mode="lines", name="加權指數（實際）",
-                                 line=dict(color=_c("#3f3e3b"), width=1.2, dash="dot"), hovertemplate="%{y:+.1%}"))
-    fig.add_hline(y=0, line=dict(color=GRID, width=1))
+        fig.add_trace(go.Scatter(x=x, y=path["market"], mode="lines", name="加權指數",
+                                 line=dict(color=_c("#8a8984"), width=1.6, dash="dot"),
+                                 hovertemplate="加權指數 %{y:+.1%}<extra></extra>"))
+    fig.add_hline(y=0, line=dict(color=_c("#8a8984"), width=1))
     fig = _layout(fig, title, height=height, pct_y=True)
-    fig.update_xaxes(tickformat="%m/%d", rangebreaks=[dict(bounds=["sat", "mon"])])   # 不畫週末空白
+    if y_range:
+        fig.update_yaxes(range=list(y_range), dtick=0.05, tickformat=".0%")
+    ticks = list(x.iloc[::2]) + ([x.iloc[-1]] if (len(x) - 1) % 2 else [])
+    fig.update_xaxes(tickvals=ticks, ticktext=[f"{t:%m/%d}" for t in ticks], tickangle=0,
+                     rangebreaks=[dict(bounds=["sat", "mon"])])   # 每 2 個交易日一個刻度，不畫週末空白
+    fig.update_layout(legend=dict(font=dict(size=11), itemwidth=30, tracegroupgap=0))
     return fig
 
+
+def forecast_compare(items: Dict[str, Dict], height: int = 250) -> go.Figure:
+    """三個策略的「期末」預估比較（同一條橫軸）：粗線 = 68% 區間、細線 = 95% 區間、空心圓 = 模型預估、
+    菱形 = 實際（已發生時）。items：{策略: {"expected", "lo68", "hi68", "lo95", "hi95", "actual"(可為 None)}}"""
+    fig = go.Figure()
+    for n, v in items.items():
+        c = _c(STRATEGY_COLORS.get(n, SERIES_PALETTE[0]))
+        fig.add_trace(go.Scatter(x=[v["lo95"], v["hi95"]], y=[n, n], mode="lines",
+                                 line=dict(color=_rgba(c, 0.4), width=6), showlegend=False,
+                                 hovertemplate=f"95% 區間 {v['lo95']:+.1%} ～ {v['hi95']:+.1%}<extra></extra>"))
+        fig.add_trace(go.Scatter(x=[v["lo68"], v["hi68"]], y=[n, n], mode="lines",
+                                 line=dict(color=_rgba(c, 0.85), width=14), showlegend=False,
+                                 hovertemplate=f"68% 區間 {v['lo68']:+.1%} ～ {v['hi68']:+.1%}<extra></extra>"))
+        fig.add_trace(go.Scatter(x=[v["expected"]], y=[n], mode="markers+text", text=[f"預估 {v['expected']:+.1%}"],
+                                 textposition="top center", textfont=dict(size=15, color=c),
+                                 marker=dict(size=14, color=_bg(), line=dict(color=c, width=3)),
+                                 showlegend=False, cliponaxis=False, hovertemplate="模型預估 %{x:+.1%}<extra></extra>"))
+        if v.get("actual") is not None:
+            fig.add_trace(go.Scatter(x=[v["actual"]], y=[n], mode="markers+text", text=[f"實際 {v['actual']:+.1%}"],
+                                     textposition="bottom center", textfont=dict(size=14, color=c),
+                                     marker=dict(symbol="diamond", size=14, color=c, line=dict(color=_bg(), width=1)),
+                                     showlegend=False, cliponaxis=False, hovertemplate="實際 %{x:+.1%}<extra></extra>"))
+    fig.add_vline(x=0, line=dict(color=_c("#8a8984"), width=1))
+    fig = _layout(fig, "", height=height)
+    fig.update_xaxes(tickformat=".0%", dtick=0.05, showgrid=True, gridcolor=GRID, zeroline=False)
+    fig.update_yaxes(autorange=False, range=[len(items) - 0.4, -0.6], showgrid=False, tickfont=dict(size=14))
+    fig.update_layout(hovermode="closest", margin=dict(l=10, r=24, t=34, b=10))
+    return fig
+
+
 __all__ = ["nav_chart", "drawdown_chart", "exposure_chart", "industry_bar", "risk_return_scatter", "price_chart", "line_chart", "histogram",
-           "bar_h", "esg_radar", "scatter_peers", "rank_ic_chart", "forecast_chart", "STRATEGY_COLORS", "style_map", "px"]
+           "bar_h", "esg_radar", "scatter_peers", "rank_ic_chart", "forecast_chart", "forecast_compare", "STRATEGY_COLORS", "style_map", "px"]

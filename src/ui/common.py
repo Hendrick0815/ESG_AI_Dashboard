@@ -106,7 +106,7 @@ def sidebar_strategy(ds: store.Dataset) -> Params:
                                                 help="集中加權：第 1 名 30%，前 5 名約 69%（原 generate_backtest.py 的做法）"))
         esg_w = _keep("esg_w", st.slider("AI+ESG 中 ESG 的比重", 0.0, 1.0, _remember("esg_w", config.DEFAULT_ESG_WEIGHT), 0.05,
                                          help="混合分數 =（1−比重）× AI 預測排名 ＋ 比重 × ESG 排名"))
-        st.caption(f"每 {config.HOLD_DAYS} 個交易日調倉；已扣交易成本（手續費 0.1425%、賣出證交稅 0.3%）")
+        st.caption(f"每 {config.REBALANCE_WEEKS} 週調倉（固定同一天，遇假日順延）；已扣交易成本（手續費 0.1425%、賣出證交稅 0.3%）")
         risk_on = _keep("risk_on", st.checkbox(
             "風險控制（降低最大回撤，報酬會變低）", _remember("risk_on", config.DEFAULT_RISK_CONTROL),
             help="① 不買跌破年線（200 日均線）的股票\n\n"
@@ -206,25 +206,50 @@ def metric_cards(items, min_width: int = 170) -> None:
         f'<div class="esg-cards">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
-def holdings_table(df: pd.DataFrame, names: Dict[str, str], score_fmt: str = "{:.3f}") -> pd.DataFrame:
-    out = pd.DataFrame({
+def stock_info(res: Result, ds: store.Dataset, d) -> pd.DataFrame:
+    """調倉日 d 每檔股票的 AI 預測（未來 10 個交易日相對全體的超額報酬）與當時最新已公告的 TESG 總分。
+    三個策略的持股表都用這兩欄，單位一致（AI 預測為 %、TESG 為 0～100 分）。"""
+    d = pd.Timestamp(d)
+    ev = res.evaluation
+    pred = ev[ev["date"] == d].set_index("ticker")["pred"] if not ev.empty else pd.Series(dtype=float)
+    esg = pd.Series(dtype=float)
+    e = ds.esg
+    if e is not None and not e.empty and "esg_total" in e.columns:
+        col = "available_date" if "available_date" in e.columns else "date"
+        e = e[pd.to_datetime(e[col]) <= d].sort_values(col)
+        esg = e.groupby("ticker")["esg_total"].last()
+    return pd.DataFrame({"pred": pred, "esg": esg})
+
+
+def holdings_table(df: pd.DataFrame, names: Dict[str, str], info: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """持股表：代號、公司、權重、AI 預測超額（%）、TESG（分）。三個策略欄位與單位相同。"""
+    info = info if info is not None else pd.DataFrame(columns=["pred", "esg"])
+    pred = info["pred"].reindex(df["ticker"]).values
+    esg = info["esg"].reindex(df["ticker"]).values
+    return pd.DataFrame({
         "代號": df["ticker"].values,
         "公司": [names.get(t, "") for t in df["ticker"]],
         "權重": [f"{w:.1%}" for w in df["weight"]],
-        "分數": [score_fmt.format(s) if pd.notna(s) else "-" for s in df["score"]],
+        "AI 預測超額": [f"{p:+.2%}" if pd.notna(p) else "-" for p in pred],
+        "TESG": [f"{x:.1f}" if pd.notna(x) else "-" for x in esg],
     })
-    return out
 
 
-SCORE_FMT = {"單純 ESG": "{:.1f}"}
-
-
-def holdings_block(sub: pd.DataFrame, names: Dict[str, str], strat: str, empty_text: str = "沒有可用的選股") -> None:
+def holdings_block(sub: pd.DataFrame, names: Dict[str, str], strat: str, empty_text: str = "沒有可用的選股",
+                   info: Optional[pd.DataFrame] = None) -> None:
     """一個策略的持股表（權重是滿倉時的比例；大盤跌破年線時實際持股會減半）。"""
     if sub.empty:
         st.info(empty_text)
         return
-    st.dataframe(holdings_table(sub, names, SCORE_FMT.get(strat, "{:.3f}")), hide_index=True, width="stretch")
+    st.dataframe(holdings_table(sub, names, info), hide_index=True, width="stretch",
+                 column_config={"代號": st.column_config.TextColumn(width=78), "權重": st.column_config.TextColumn(width=52),
+                                "AI 預測超額": st.column_config.TextColumn("AI 預測", width=66),
+                                "TESG": st.column_config.TextColumn(width=46)})
+
+
+HOLDINGS_NOTE = ("**AI 預測超額**＝模型預估這檔股票未來 10 個交易日（約 2 週）比股票池平均多賺幾 %；"
+                 "**TESG**＝調倉日當時最新已公告的 TEJ ESG 總分（0～100）。三個策略用同一套欄位，"
+                 "差別只在挑選方式：單純 AI 看 AI 預測、單純 ESG 看 TESG、AI+ESG 兩者排名加權。")
 
 
 def portfolio_labels(names: Dict[str, str]) -> Dict[str, str]:

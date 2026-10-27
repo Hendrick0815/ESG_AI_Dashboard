@@ -39,6 +39,7 @@ python tests/smoke_ui.py
 | 策略回測 | 績效表、淨值／回撤／風險報酬圖（可選期間：全部、近 1／3／5 年、有 ESG 以後、自訂；可切換對數刻度）、每日持股比例、歷次持股、換股成本、方法說明 | v5 + generate_backtest |
 | 個股分析 | K 線、均線、波動、報酬分布、ESG 雷達圖、同業比較 | my_project/app.py |
 | 模型解釋 | 特徵重要性、Rank IC、Top N 超額報酬、SHAP、訓練紀錄 | v5 模型解釋 |
+| 論文正式版本 | 論文第三、四章的表格與圖（逐期股票池、含下市股，固定在資料截點），與其他頁面的「目前前 300 大」回測不同 | 新增 |
 | 產業與籌碼 | 產業趨勢排行、三大法人（主力）買賣超排行與產業分布（僅供參考，不影響選股） | 新增 |
 
 左側的策略設定在各頁共用。每組設定第一次計算完會存到 `outputs/cache/`，之後打開（包括重開網頁、`run_backtest.py` 算過的設定）直接讀檔；
@@ -89,16 +90,31 @@ data/
 |---|---|
 | 股票池 | 預設近 20 個交易日平均成交金額前 300 大（含市值前 50 大，清單存在 data/processed/universe.csv）；`--universe core` 只抓前 50 大；`--universe tej` 為所有有 TEJ 評等的上市櫃普通股（排除 ETF、權證、特別股） |
 | 特徵 | 5/20/60 日動能、20 日波動、月線／季線乖離、見頂訊號（距 20 日高點跌幅與天數、連跌天數、量能比、短期反轉）、本益比、淨值比、殖利率（＋本機財報欄位） |
-| 產業 | 同一產業最多持有 5 檔（config.MAX_PER_INDUSTRY）；產業特徵、產業趨勢濾網可在 config 開啟（回測較差，預設關閉） |
+| 產業 | 不限制產業檔數；產業趨勢加分（INDUSTRY_TREND_WEIGHT）、產業特徵、產業趨勢濾網、產業上限都可在 config 開啟（回測都較差，預設關閉） |
 | 回測期間 | 訓練資料從 2017-08 起（config.HISTORY_START）；樣本外績效從 2022-11-01 起（config.BACKTEST_START，TEJ ESG 第一次公告日） |
 | 預測目標 | 未來 10 個交易日報酬減去當天全體平均 |
-| 模型 | Random Forest / XGBoost / 兩者平均，**滾動式訓練**（每 3 個月重訓），只用訓練當天已知結果的樣本 |
-| 單純 AI | 預測分數最高的 N 檔（預設 15 檔） |
-| AI+ESG | 排除爭議分數 > 3、EPS < 0 後，(1−w)×AI 排名 + w×ESG 排名（w 預設 0.3） |
-| 單純 ESG | 排除條件後 ESG 總分最高的 N 檔 |
-| 風險控制 | ① 不買跌破年線（200 日均線）的股票 ② 不買近 60 日波動最高的 20% ③ 加權指數跌破年線時持股減半（每天收盤檢查）④ 預設分散到 15 檔。可在左側關閉比較 |
-| 回測 | **固定每 10 個交易日**收盤換股、隔天起算報酬、持有期間權重漂移；等權或集中加權；**一律扣**手續費 0.1425%×2 + 證交稅 0.3% |
+| 模型 | Random Forest（預設）／XGBoost／兩者平均，**滾動式訓練**（每 3 次調倉、約 6 週重訓），只用訓練當天已知結果的樣本 |
+| 單純 AI | 預測分數最高的 N 檔（預設 **20 檔**，與 src/config.py 的 DEFAULT_TOP_N 相同） |
+| AI+ESG | (1−w)×AI 排名 + w×TESG 排名（w 預設 0.3）。原規劃的爭議分數、EPS 排除條件因資料沒有對應欄位，程式不會套用 |
+| 單純 ESG（論文稱「規則式 ESG 篩選投組」） | TESG 總分最高的 N 檔 |
+| 風險控制 | ① 不買跌破年線（200 日均線）的股票 ② 不買近 60 日波動最高的 20% ③ 加權指數跌破年線時持股減半（每天收盤檢查）。預設關閉 |
+| 回測 | **固定每 2 週**收盤換股（從回測起點起算、固定同一個星期幾，遇假日順延；論文正式版本仍為每 10 個交易日）、隔天起算報酬、持有期間權重漂移；等權或集中加權；**一律扣**手續費 0.1425%×2 + 證交稅 0.3% |
 | 績效 | 累積／幾何年化報酬、年化波動、Sharpe（扣無風險利率 1%）、最大回撤、日報酬平均與變異數 |
+
+## 論文正式版本（可重現）
+
+論文使用的設定集中在 **research_config.json**（資料截點 2026-10-20、Top 20、等權、Random Forest、種子 42 等），網站預設值除調倉方式外與它一致（網站每 2 週固定同一天調倉，論文鎖定為每 10 個交易日）；網站每天更新的數字會隨新資料改變，論文以研究版本為準。
+
+```
+pip install -r requirements-lock.txt                       # 固定套件版本
+python scripts/backfill_daily_quotes.py 2017-07-03 2026-10-20 tpex   # 上櫃逐日行情（上市年度檔已在 data/raw/daily_quotes_twse/）
+python scripts/research/run_research.py                    # 逐期股票池＋正式回測＋表 3-3、3-7、3-8、4-1～4-10
+python scripts/research/build_report.py                    # 由表格檔產生論文 Word／PDF
+python scripts/research/capture_web.py                     # 網站「論文正式版本」頁截圖（需 playwright）
+python scripts/research/build_report.py                    # 再產生一次，表格換成網站截圖
+```
+
+輸出在 `outputs/research/thesis_2026-10-20/`：manifest.json（設定、資料與程式 SHA-256、套件版本）、strategy_returns、performance、holdings、latest_picks、universe_history（逐期股票池）、availability_checks（資料可得日檢查）、tables/。研究版的股票池用證交所／櫃買中心逐日行情在每個交易日重新排名（含之後下市的股票），和網站「目前前 300 大」不同。參數試驗紀錄在 docs/parameter_trials.csv。`data/demo/` 是合成示範資料，論文不使用。
 
 ## 專案結構
 

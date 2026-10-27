@@ -20,13 +20,20 @@ Z68, Z95 = 1.0, 1.96
 
 
 def holding_window(rebalance_dates, latest_date: pd.Timestamp, d: pd.Timestamp,
-                   trading_days: pd.DatetimeIndex, hold_days: int = config.HOLD_DAYS) -> pd.DatetimeIndex:
-    """調倉日 d 之後的持有期間（不含 d）：到下一個調倉日為止；最後一期資料不夠時，往後補成「預估的交易日」（平日）。"""
+                   trading_days: pd.DatetimeIndex, hold_days: int = config.HOLD_DAYS,
+                   next_date: Optional[pd.Timestamp] = None) -> pd.DatetimeIndex:
+    """調倉日 d 之後的持有期間（不含 d）：到下一個調倉日為止。最後一期還沒走完時，
+    往後補「預估的交易日」（平日）到下一個預定調倉日 next_date；沒給 next_date 時補到 hold_days 天。"""
     d = pd.Timestamp(d)
     later = [pd.Timestamp(x) for x in rebalance_dates if pd.Timestamp(x) > d]
     known = trading_days[trading_days > d]
     if later:
         return known[known <= later[0]]
+    if next_date is not None:
+        end = pd.Timestamp(next_date)
+        known = known[known <= end]
+        start = known[-1] if len(known) else d
+        return known.append(pd.bdate_range(start + pd.Timedelta(days=1), end))
     known = known[:hold_days]
     if len(known) >= hold_days:
         return known

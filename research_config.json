@@ -1,0 +1,46 @@
+{
+  "run_id": "thesis_2026-10-20",
+  "description": "論文正式版本：資料截點 2026-10-20，逐期股票池（含下市股票），參數於 2026-10-25 鎖定",
+  "data_cutoff": "2026-10-20",
+  "locked_on": "2026-10-25",
+  "history_start": "2017-08-01",
+  "backtest_start": "2022-11-01",
+  "long_backtest_start": "2019-01-02",
+  "universe": {
+    "method": "point_in_time_top_trading_value",
+    "size": 300,
+    "window_days": 20,
+    "min_trading_days": 15,
+    "source": "證交所 MI_INDEX、櫃買中心 dailyQuotes 逐日行情（含之後下市的股票）",
+    "common_stock_rule": "4 碼代號、不以 0 開頭、排除 91xx 存託憑證"
+  },
+  "model": "Random Forest",
+  "n_estimators": 100,
+  "random_seed": 42,
+  "retrain_every_rebalances": 3,
+  "train_sample_every_days": 5,
+  "hold_days": 10,
+  "top_n": 20,
+  "weighting": "等權",
+  "esg_weight": 0.3,
+  "risk_control": false,
+  "use_peak_features": true,
+  "use_industry_features": false,
+  "max_per_industry": 0,
+  "industry_trend_weight": 0.0,
+  "costs": {"commission": 0.001425, "sell_tax": 0.003, "slippage_per_side": 0.0},
+  "slippage_grid": [0.0, 0.001, 0.002, 0.003],
+  "risk_free_annual": 0.01,
+  "benchmarks": ["^TWII", "0050.TW", "00850.TW", "00878.TW"],
+  "esg_rules": {
+    "exclude_controversy": false,
+    "exclude_negative_eps": false,
+    "note": "原規劃排除爭議分數 > 3 與 EPS < 0，但現有資料沒有對應欄位（TEJ 檔只有事件雷達轉換計分、無 EPS），程式未套用；論文已改正描述"
+  },
+  "periods": {
+    "development": ["2017-08-01", "2020-12-31"],
+    "validation": ["2021-01-01", "2022-10-31"],
+    "exploratory_evaluation": ["2022-11-01", "2026-10-20"],
+    "locked_holdout": ["2026-10-21", null]
+  }
+}

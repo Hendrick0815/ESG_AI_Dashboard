@@ -1,0 +1,129 @@
+{
+  "run_id": "thesis_2026-10-20",
+  "started": "2026-10-25T22:39:32",
+  "finished": "2026-10-25T22:54:10",
+  "git_commit": null,
+  "config": {
+    "run_id": "thesis_2026-10-20",
+    "description": "論文正式版本：資料截點 2026-10-20，逐期股票池（含下市股票），參數於 2026-10-25 鎖定",
+    "data_cutoff": "2026-10-20",
+    "locked_on": "2026-10-25",
+    "history_start": "2017-08-01",
+    "backtest_start": "2022-11-01",
+    "long_backtest_start": "2019-01-02",
+    "universe": {
+      "method": "point_in_time_top_trading_value",
+      "size": 300,
+      "window_days": 20,
+      "min_trading_days": 15,
+      "source": "證交所 MI_INDEX、櫃買中心 dailyQuotes 逐日行情（含之後下市的股票）",
+      "common_stock_rule": "4 碼代號、不以 0 開頭、排除 91xx 存託憑證"
+    },
+    "model": "Random Forest",
+    "n_estimators": 100,
+    "random_seed": 42,
+    "retrain_every_rebalances": 3,
+    "train_sample_every_days": 5,
+    "hold_days": 10,
+    "top_n": 20,
+    "weighting": "等權",
+    "esg_weight": 0.3,
+    "risk_control": false,
+    "use_peak_features": true,
+    "use_industry_features": false,
+    "max_per_industry": 0,
+    "industry_trend_weight": 0.0,
+    "costs": {
+      "commission": 0.001425,
+      "sell_tax": 0.003,
+      "slippage_per_side": 0.0
+    },
+    "slippage_grid": [
+      0.0,
+      0.001,
+      0.002,
+      0.003
+    ],
+    "risk_free_annual": 0.01,
+    "benchmarks": [
+      "^TWII",
+      "0050.TW",
+      "00850.TW",
+      "00878.TW"
+    ],
+    "esg_rules": {
+      "exclude_controversy": false,
+      "exclude_negative_eps": false,
+      "note": "原規劃排除爭議分數 > 3 與 EPS < 0，但現有資料沒有對應欄位（TEJ 檔只有事件雷達轉換計分、無 EPS），程式未套用；論文已改正描述"
+    },
+    "periods": {
+      "development": [
+        "2017-08-01",
+        "2020-12-31"
+      ],
+      "validation": [
+        "2021-01-01",
+        "2022-10-31"
+      ],
+      "exploratory_evaluation": [
+        "2022-11-01",
+        "2026-10-20"
+      ],
+      "locked_holdout": [
+        "2026-10-21",
+        null
+      ]
+    }
+  },
+  "python": "3.13.15",
+  "packages": {
+    "pandas": "3.0.5",
+    "numpy": "2.5.3",
+    "scikit-learn": "1.9.1",
+    "scipy": "1.18.1",
+    "statsmodels": "0.15.0"
+  },
+  "data_files_sha256": {
+    "data/raw/tej/tesg_2022-2026.csv": "14e8fb87c5ecae00403924d2bebbea7a343f6ed84c598357162765e9146a63db",
+    "data/raw/tej/tesg_2026Q2.csv": "2c1fc25b61ca26271ef3fb897a33ea1237715f959e6456d9b5501c7b4c847afb",
+    "data/processed/benchmarks.csv": "7a6c350e05d223a64f4d576991bbf972adc2377f723c536ea6a7454d29010db3",
+    "data/processed/valuation.csv": "08eaedc20be61fb947160354528bf4faa69ae8b7fb748a722a928ca143d51186",
+    "data/processed/listing.csv": "93c54ba44c36667338ed56a8ef21b3af0e4f911450841d24090a996737aa180c",
+    "data/raw/daily_quotes*（合計 2491 檔）": "1a8450c9837a40f0017ea4284cee9b0aec3e3955ee878425537a81aa89de602d"
+  },
+  "code_sha256": {
+    "src/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/analysis.py": "e6390681960350d5b71ab79662e46d66805a4fb2a036e5a288852dacb681e493",
+    "src/backtest.py": "c668399e863f00ce6a548d55f7d28c0f08173eb70074b67f850490bf5f03023e",
+    "src/cache.py": "295a3967fd2d635d0f1b054a15cf346d5dcc8652364a2fc3b8fb37f6a2b669c3",
+    "src/config.py": "c69103424365292e0429f2ae5bb8819689c7383afa5ec92787e929dab5a43eb9",
+    "src/crawlers/__init__.py": "80a4cdf0adac39ce834f9b1dd09f898673ccb9de92db0bdc6a92c34d89fd684f",
+    "src/crawlers/twse.py": "8554e4128e821a4f82882018d8d0aea389997575f8d37c5b859c6ca6a50550ee",
+    "src/crawlers/yahoo.py": "e3f5f0857cf5aa7a89bbd396b2c2507b048abbbc920302108fd3f1a601aa40ca",
+    "src/features.py": "1d71d6fecdeced93804e5be1a8bf420eda31e14aae878bf134df4cc344c2d9d9",
+    "src/forecast.py": "6ca9321240368b56467dd604257ad7ec1bdc683aca4c70a5bdf245fdcfd6fa59",
+    "src/loaders/__init__.py": "5c65c2f7e3daf8e6d17c66fc490dbb604fa50bdc1ac0a47e659ae06d6359e257",
+    "src/loaders/local.py": "5973951b10991b421c552e64248561cde1cc68e6c78e77efa92da0b646e9f8dd",
+    "src/loaders/tej.py": "4df0c9bd6a8b760d8aaf086eebff6dd8f15a787d517a22be7659e42bd445eeda",
+    "src/metrics.py": "5a384bacf83bcf738eccb31a046a7627fc2901a7d59720481ab5f6cf57a77e2d",
+    "src/models.py": "0860a730d4a1c6add2ee27cdef063257dfab9a513d3394d4a6e70671a322b7b4",
+    "src/pipeline.py": "8c140c5f4fede5f6856d7dc9d23d621486b7d2036f31646c4fa571ad2cd1922d",
+    "src/research/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/research/analysis.py": "4abca4784345d55885ab4c7ba0bbab2115144f6fb742366f6990dd41f6a6f246",
+    "src/research/exchange.py": "f4a259da73f1096680158faab48fe045fe01a275a5b19b2c344c7de3a1616216",
+    "src/research/stats.py": "8adb83a2e183f936c3327ef57fff7b5fb4535eebe7f97155280ba306b08a70eb",
+    "src/store.py": "1b14ea4bb401b954176ce35229cc7f8ea0d7c8a382bb2b975420527a9cf924ab",
+    "src/ui/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/ui/charts.py": "0cff0e23db3f4d4f5323f1d46ad6e367e05d2d57cd3ba79572b7d0dcdaeb0695",
+    "src/ui/common.py": "6f6536648d4423d5dbb083b27d1c6c45911d0c20d941a90fc32d4d5cb97f0a8f",
+    "src/utils.py": "5feb1ab4f9d07c4207ed6ab5a88d673d2c155b7a25334e5e64a2669800f7dcdb",
+    "scripts/research/run_research.py": "7e9f99ec749b05691b3ca1d8230ae1048c05260cac63aec46e262de513b691bd"
+  },
+  "summary": {
+    "rebalances": 96,
+    "first_rebalance": "2022-11-01",
+    "last_rebalance": "2026-10-06",
+    "trainings": 33,
+    "universe_tickers_ever": 1358
+  }
+}

@@ -144,6 +144,7 @@ class FakeStreamlit(types.ModuleType):
 
     class column_config:   # noqa: N801
         CheckboxColumn = staticmethod(lambda *a, **k: None)
+        TextColumn = staticmethod(lambda *a, **k: None)
 
 
 def fake_plotly():

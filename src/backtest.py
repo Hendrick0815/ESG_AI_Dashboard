@@ -26,12 +26,44 @@ STRATEGY_DESC = {
 
 
 # ------------------------------------------------------------------ 調倉日
+def rebalance_anchors(first_allowed: pd.Timestamp, until: pd.Timestamp,
+                      weeks: int = None) -> List[pd.Timestamp]:
+    """日曆調倉基準日：first_allowed 起每 weeks 週一次（含 until 之後的下一個，供顯示「下次調倉」）。"""
+    weeks = weeks or config.REBALANCE_WEEKS
+    first, until = pd.Timestamp(first_allowed).normalize(), pd.Timestamp(until).normalize()
+    n = int((until - first).days // (7 * weeks)) + 2
+    return [first + pd.Timedelta(weeks=weeks * k) for k in range(n)]
+
+
 def rebalance_schedule(trading_days: pd.DatetimeIndex, first_allowed: pd.Timestamp,
-                       every: int = config.HOLD_DAYS) -> List[pd.Timestamp]:
-    """固定每 every 個交易日調倉一次（預設 10 天），從 first_allowed 起算。
-    起點由資料開頭決定，資料變長時過去的調倉日不會移動。"""
+                       every: int = None, mode: str = None) -> List[pd.Timestamp]:
+    """調倉日。mode='calendar'（網站預設）：從 first_allowed 起每 2 週同一天，遇假日順延到下一個交易日；
+    mode='trading_days'（論文）：每 every 個交易日一次。起點固定，資料變長時過去的調倉日不會移動。"""
+    mode = mode or config.REBALANCE_MODE
     days = trading_days[trading_days >= first_allowed]
-    return [pd.Timestamp(d) for d in days[::max(1, every)]]
+    if len(days) == 0:
+        return []
+    if mode == "trading_days":
+        return [pd.Timestamp(d) for d in days[::max(1, every or config.HOLD_DAYS)]]
+    out = []
+    for a in rebalance_anchors(days[0], days[-1]):
+        pos = days.searchsorted(a)
+        if pos < len(days) and (not out or days[pos] > out[-1]):
+            out.append(pd.Timestamp(days[pos]))
+    return out
+
+
+def next_rebalance(first_allowed: pd.Timestamp, after: pd.Timestamp, mode: str = None,
+                   every: int = None) -> pd.Timestamp:
+    """after 之後的下一個調倉基準日（日曆模式；遇假日實際會順延）。交易日模式回傳 after 後第 every 個平日。"""
+    mode = mode or config.REBALANCE_MODE
+    after = pd.Timestamp(after)
+    if mode == "trading_days":
+        return pd.bdate_range(after + pd.Timedelta(days=1), periods=every or config.HOLD_DAYS)[-1]
+    for a in rebalance_anchors(first_allowed, after):
+        if a > after:
+            return a
+    return after + pd.Timedelta(weeks=config.REBALANCE_WEEKS)
 
 
 # ------------------------------------------------------------------ 選股分數
@@ -61,9 +93,25 @@ def apply_risk_filters(snap: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def score_strategies(snapshot: pd.DataFrame, esg_weight: float, risk_filters: bool = False) -> Dict[str, pd.Series]:
+def ai_score(snap: pd.DataFrame, industry_weight: float) -> pd.Series:
+    """AI 分數；industry_weight > 0 時改成「AI 預測排名」和「所屬產業趨勢排名」的加權平均（0～1）。
+    產業趨勢只是加分／扣分，不排除任何股票、不限制產業檔數；沒有產業資料的股票視為中間值。"""
+    pred = snap["pred"].dropna()
+    col = config.INDUSTRY_TREND_MEASURE
+    if industry_weight <= 0 or col not in snap.columns or snap[col].notna().sum() == 0:
+        return pred
+    ai_rank = _pct_rank(pred)
+    ind_rank = _pct_rank(snap.loc[pred.index, col]).fillna(0.5)
+    return (1 - industry_weight) * ai_rank + industry_weight * ind_rank
+
+
+def score_strategies(snapshot: pd.DataFrame, esg_weight: float, risk_filters: bool = False,
+                     industry_weight: Optional[float] = None) -> Dict[str, pd.Series]:
     """snapshot：某個調倉日所有股票（ticker, pred, esg_total...）。回傳各策略的分數（越高越好）。
-    risk_filters=True：先排除跌破年線、波動最高 20% 的股票，再排序。"""
+    risk_filters=True：先排除跌破年線、波動最高 20% 的股票，再排序。
+    industry_weight：AI 分數裡產業趨勢的比重（None = config.INDUSTRY_TREND_WEIGHT）。"""
+    if industry_weight is None:
+        industry_weight = config.INDUSTRY_TREND_WEIGHT
     snap = snapshot.set_index("ticker")
     if risk_filters:
         snap = apply_risk_filters(snap)
@@ -71,9 +119,9 @@ def score_strategies(snapshot: pd.DataFrame, esg_weight: float, risk_filters: bo
     if snap.empty:
         return scores
     if "pred" in snap.columns and snap["pred"].notna().any():
-        scores[STRATEGY_AI] = snap["pred"].dropna()
+        scores[STRATEGY_AI] = ai_score(snap, industry_weight)
         filt = apply_esg_rules(snap.dropna(subset=["pred"]))
-        ai_rank = _pct_rank(filt["pred"])
+        ai_rank = _pct_rank(ai_score(filt, industry_weight))
         if "esg_total" in filt.columns and filt["esg_total"].notna().any():
             esg_rank = _pct_rank(filt["esg_total"]).fillna(0.5)   # 沒有評等 → 視為中間值
             scores[STRATEGY_AI_ESG] = (1 - esg_weight) * ai_rank + esg_weight * esg_rank
@@ -134,7 +182,8 @@ def trading_cost(old: pd.Series, new: pd.Series) -> float:
     idx = old.index.union(new.index)
     diff = new.reindex(idx, fill_value=0) - old.reindex(idx, fill_value=0)
     buys, sells = diff.clip(lower=0).sum(), (-diff).clip(lower=0).sum()
-    return float(buys * config.COMMISSION + sells * (config.COMMISSION + config.SELL_TAX))
+    slip = getattr(config, "SLIPPAGE", 0.0)           # 每邊滑價／額外成本（例如 0.001 = 10 bps）
+    return float(buys * (config.COMMISSION + slip) + sells * (config.COMMISSION + config.SELL_TAX + slip))
 
 
 @dataclass
