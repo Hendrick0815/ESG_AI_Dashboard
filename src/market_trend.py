@@ -213,3 +213,76 @@ def risk_level(p_vol: float, base_vol: float) -> str:
     """風險燈號：未來 1 個月高波動機率相對歷史平均的倍數。≥ 2 倍為高、≤ 0.75 倍為低，其餘中。"""
     ratio = p_vol / base_vol if base_vol else 1.0
     return "高" if ratio >= 2 else ("低" if ratio <= 0.75 else "中")
+
+
+# ------------------------------------------------------------------ 目前趨勢（描述現在，不是預測）
+TREND_ORDER = ["牛市", "偏多", "盤整", "偏空", "熊市"]
+
+
+def trend_series(wide: pd.DataFrame) -> pd.DataFrame:
+    """每天收盤後的趨勢判斷（只用當天為止的資料）：7 項常見指標各給 多(+1)／中性(0)／空(−1)，加總後分級。
+    距一年高點跌超過 20% 依慣例直接判為熊市。"""
+    px = wide["^TWII"].dropna()
+    px = px[px > 0]
+    days = px.index
+    ma60, ma200 = px.rolling(60).mean(), px.rolling(200).mean()
+    t = pd.DataFrame(index=days)
+    t["close"], t["ma60"], t["ma200"] = px, ma60, ma200
+    t["gap200"] = px / ma200 - 1
+    t["slope200"] = ma200 / ma200.shift(20) - 1
+    t["dd250"] = px / px.rolling(250, min_periods=120).max() - 1
+    t["r60"] = px.pct_change(60)
+
+    def lag(col):
+        if col not in wide:
+            return pd.Series(np.nan, index=days)
+        s = wide[col].dropna().rename("v").rename_axis("d").reset_index()
+        x = pd.merge_asof(pd.DataFrame({"d": days}), s, on="d", allow_exact_matches=False)
+        return pd.Series(x["v"].to_numpy(), index=days)
+
+    spx = lag("^GSPC")
+    t["spx_gap200"] = spx / spx.rolling(200).mean() - 1
+    t["vix"] = lag("^VIX")
+    sig = pd.DataFrame(index=days)
+    sig["年線位置"] = np.sign(t["gap200"])
+    sig["年線方向"] = np.where(t["slope200"] > 0.002, 1, np.where(t["slope200"] < -0.002, -1, 0))
+    sig["均線排列"] = np.sign(t["ma60"] - t["ma200"])
+    sig["距一年高點"] = np.where(t["dd250"] >= -0.10, 1, np.where(t["dd250"] <= -0.20, -1, 0))
+    sig["近 60 日漲跌"] = np.where(t["r60"] >= 0.05, 1, np.where(t["r60"] <= -0.10, -1, 0))
+    sig["美股趨勢"] = np.sign(t["spx_gap200"])
+    sig["VIX 恐慌指數"] = np.where(t["vix"] < 20, 1, np.where(t["vix"] > 30, -1, 0))
+    valid = t[["gap200", "slope200", "dd250", "r60"]].notna().all(axis=1)
+    score = sig.fillna(0).sum(axis=1)
+    verdict = pd.Series(np.select([t["dd250"] <= -0.20, score >= 4, score >= 2, score >= -1],
+                                  ["熊市", "牛市", "偏多", "盤整"], "偏空"), index=days)
+    t["score"] = score
+    t["verdict"] = verdict.where(valid)
+    return pd.concat([t, sig.add_prefix("sig_")], axis=1)
+
+
+def current_trend(wide: pd.DataFrame) -> Dict:
+    """最新一天的趨勢表（指標、目前數值、判斷、說明）與總結。"""
+    ts = trend_series(wide)
+    ts = ts[ts["verdict"].notna()]
+    now = ts.iloc[-1]
+    v = now["verdict"]
+    since = ts.index[(ts["verdict"] != v)].max()
+    start = ts.index[ts.index > since][0] if pd.notna(since) else ts.index[0]
+    lab = {1: "🟢 多", 0: "⚪ 中性", -1: "🔴 空"}
+    rows = [
+        ("年線位置", f"加權指數 {now['close']:,.0f}，年線 {now['ma200']:,.0f}（{now['gap200']:+.1%}）",
+         "站上年線（200 日均線）為多，跌破為空"),
+        ("年線方向", f"年線近 20 日 {now['slope200']:+.2%}", "年線上揚為多、下彎為空，持平為中性"),
+        ("均線排列", f"季線 {now['ma60']:,.0f} {'＞' if now['ma60'] > now['ma200'] else '＜'} 年線 {now['ma200']:,.0f}",
+         "季線（60 日）在年線之上為多頭排列"),
+        ("距一年高點", f"{now['dd250']:+.1%}", "跌幅 10% 以內為多；10～20% 為修正（中性）；超過 20% 為熊市"),
+        ("近 60 日漲跌", f"{now['r60']:+.1%}", "漲 ≥ 5% 為多、跌 ≥ 10% 為空"),
+        ("美股趨勢", f"S&P 500 距年線 {now['spx_gap200']:+.1%}" if pd.notna(now["spx_gap200"]) else "—",
+         "前一晚 S&P 500 在年線之上為多"),
+        ("VIX 恐慌指數", f"{now['vix']:.1f}" if pd.notna(now["vix"]) else "—", "低於 20 市場平靜為多、高於 30 恐慌為空"),
+    ]
+    table = pd.DataFrame([{"指標": n, "目前數值": val, "判斷": lab[int(now[f"sig_{n}"]) if pd.notna(now[f"sig_{n}"]) else 0],
+                           "判斷標準": rule} for n, val, rule in rows])
+    return {"date": ts.index[-1], "verdict": v, "score": int(now["score"]), "since": start,
+            "days": int((ts.index >= start).sum()), "table": table, "series": ts,
+            "n_bull": int((table["判斷"] == lab[1]).sum()), "n_bear": int((table["判斷"] == lab[-1]).sum())}

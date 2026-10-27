@@ -3,14 +3,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from src._fresh import ensure_fresh
+ensure_fresh()   # 雲端更新程式後，確保讀到新版 src 模組
 from src import backtest as bt, config, forecast
-import importlib
-from src.ui import charts as _charts, common as _common
-# 雲端更新程式時，頁面會重跑但 src 模組可能仍是舊版（記憶體快取）；缺新函式就重新載入
-for _m, _need in ((config, "MARKET_DRIFT_ANNUAL"), (bt, "next_rebalance"), (forecast, "market_regime"),
-                  (_charts, "forecast_compare"), (_common, "stock_info")):
-    if not hasattr(_m, _need):
-        importlib.reload(_m)
 from src.backtest import STRATEGIES
 from src.metrics import format_table, performance_table
 from src.ui import charts

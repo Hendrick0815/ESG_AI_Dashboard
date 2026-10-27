@@ -2,6 +2,8 @@
 import pandas as pd
 import streamlit as st
 
+from src._fresh import ensure_fresh
+ensure_fresh()   # 雲端更新程式後，確保讀到新版 src 模組
 from src import analysis
 from src.metrics import fmt_pct
 from src.ui import charts

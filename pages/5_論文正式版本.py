@@ -8,6 +8,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src._fresh import ensure_fresh
+ensure_fresh()   # 雲端更新程式後，確保讀到新版 src 模組
 from src import config
 from src.backtest import STRATEGY_AI, STRATEGY_AI_ESG, STRATEGY_ESG
 from src.ui import charts

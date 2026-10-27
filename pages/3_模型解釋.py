@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from src._fresh import ensure_fresh
+ensure_fresh()   # 雲端更新程式後，確保讀到新版 src 模組
 from src import config
 from src.features import TECH_LABELS
 from src.metrics import fmt_num, fmt_pct

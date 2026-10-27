@@ -2,6 +2,8 @@
 import pandas as pd
 import streamlit as st
 
+from src._fresh import ensure_fresh
+ensure_fresh()   # 雲端更新程式後，確保讀到新版 src 模組
 from src import config, store
 from src import backtest as bt
 from src.backtest import STRATEGIES, STRATEGY_DESC
@@ -124,7 +126,7 @@ if params.risk_control and not res.risk_log.empty:
                   "加權指數在年線之上" if expo >= 0.99 else "加權指數跌破年線，持股減半"))
 metric_cards(cards, min_width=200)
 
-st.page_link("pages/0_大盤趨勢預測.py", label="看大盤趨勢預測（牛熊方向與波動風險）", icon="🧭")
+st.page_link("pages/0_大盤趨勢預測.py", label="看大盤趨勢", icon="🧭")
 pick_info = stock_info(res, ds, res.latest_date)
 pick_cols = st.columns(len(STRATEGIES))
 for col, strat in zip(pick_cols, STRATEGIES):
