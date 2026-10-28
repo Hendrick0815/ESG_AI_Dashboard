@@ -25,3 +25,4 @@
 2026-10-23 12:12:46,,,,,,"{'dates_requested': 0, 'rows_downloaded': 0}",auto,2026-10-23,"{'rows': 2700, 'failed': 0}",{'rows': 36},"{'dates_requested': 10, 'rows_downloaded': 9397}",2026-10-22,
 2026-10-26 13:38:34,,,,,,"{'dates_requested': 1, 'rows_downloaded': 0}",auto,2026-10-26,"{'rows': 2999, 'failed': 0}",{'rows': 39},"{'dates_requested': 10, 'rows_downloaded': 8370}",2026-10-23,
 2026-10-27 12:44:39,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1087}",auto,2026-10-27,"{'rows': 3299, 'failed': 0}",{'rows': 43},"{'dates_requested': 10, 'rows_downloaded': 8373}",2026-10-27,"{'rows': 37178, 'last': '2026-10-27'}"
+2026-10-28 13:36:19,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1087}",auto,2026-10-28,"{'rows': 2099, 'failed': 0}",{'rows': 27},"{'dates_requested': 10, 'rows_downloaded': 8420}",2026-10-28,"{'rows': 37185, 'last': '2026-10-28'}"
