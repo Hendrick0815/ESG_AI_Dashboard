@@ -107,15 +107,19 @@ data/
 論文使用的設定集中在 **research_config.json**（資料截點 2026-10-20、Top 20、等權、Random Forest、種子 42 等），網站預設值除調倉方式外與它一致（網站每 2 週固定同一天調倉，論文鎖定為每 10 個交易日）；網站每天更新的數字會隨新資料改變，論文以研究版本為準。
 
 ```
-pip install -r requirements-lock.txt                       # 固定套件版本
-python scripts/backfill_daily_quotes.py 2017-07-03 2026-10-20 tpex   # 上櫃逐日行情（上市年度檔已在 data/raw/daily_quotes_twse/）
-python scripts/research/run_research.py                    # 逐期股票池＋正式回測＋表 3-3、3-7、3-8、4-1～4-10
-python scripts/research/build_report.py                    # 由表格檔產生論文 Word／PDF
-python scripts/research/capture_web.py                     # 網站「論文正式版本」頁截圖（需 playwright）
-python scripts/research/build_report.py                    # 再產生一次，表格換成網站截圖
+pip install -r requirements-lock.txt                                   # 固定套件版本
+git checkout 5c2c22c -- data/processed/prices.csv data/processed/benchmarks.csv data/processed/valuation.csv data/processed/listing.csv   # 論文使用的資料快照
+python scripts/backfill_daily_quotes.py 2017-07-03 2026-10-20 tpex     # 上櫃逐日全市場行情
+python scripts/fetch_yahoo_all.py data/raw/twse_codes.txt              # 上市股票 Yahoo 日資料（缺的寫入 missing.txt）
+python scripts/fetch_finmind_twse.py --file data/raw/yahoo_all/missing.txt   # Yahoo 未收錄（多為已下市）的上市股票
+python scripts/research/check_twse_coverage.py                         # 上市股票涵蓋率檢查（有缺漏會停止）
+python scripts/research/run_research.py --data-snapshot 5c2c22c        # 逐期股票池＋正式回測＋所有表格檔
+python scripts/research/build_report.py                                # 由表格檔產生論文 Word／PDF
+python scripts/research/capture_web.py                                 # 網站「論文正式版本」頁截圖（需 playwright）
+python scripts/research/build_report.py                                # 再產生一次，表格換成網站截圖
 ```
 
-輸出在 `outputs/research/thesis_2026-10-20/`：manifest.json（設定、資料與程式 SHA-256、套件版本）、strategy_returns、performance、holdings、latest_picks、universe_history（逐期股票池）、availability_checks（資料可得日檢查）、tables/。研究版的股票池用證交所／櫃買中心逐日行情在每個交易日重新排名（含之後下市的股票），和網站「目前前 300 大」不同。參數試驗紀錄在 docs/parameter_trials.csv。`data/demo/` 是合成示範資料，論文不使用。
+輸出在 `outputs/research/thesis_2026-10-20/`：manifest.json（設定、資料快照、資料與程式 SHA-256、套件版本）、strategy_returns、performance、holdings、universe_history（逐期股票池）、universe_screening（每檔股票的篩選結果與排除原因）、availability_checks（資料可得日檢查）、missing_values（缺值紀錄）、twse_coverage_check（上市股票涵蓋率）、rerun_check.txt（重跑紀錄）、tables/。研究版的股票池用逐日行情在每個交易日重新排名（含之後下市的股票），和網站「目前前 300 大」不同。原始逐日行情不放 GitHub，manifest 記錄雜湊值供核對。參數試驗紀錄在 docs/parameter_trials.csv。`data/demo/` 是合成示範資料，論文不使用。
 
 ## 專案結構
 

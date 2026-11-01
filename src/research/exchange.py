@@ -213,6 +213,27 @@ def eligibility(prices: pd.DataFrame, size: int = 300, window: int = 20, min_day
     return out
 
 
+def universe_screening(prices: pd.DataFrame, dates, size: int = 300, window: int = 20, min_days: int = 15) -> pd.DataFrame:
+    """調倉日當天有行情的每一檔普通股的篩選結果與原因（與 eligibility 相同的計算）：
+    入選（排名 ≤ size）／未入選：20 日均成交金額排名在 size 名之後／排除：近 window 個交易日有交易的天數不足 min_days（新上市或長期停牌）。"""
+    days = pd.DatetimeIndex(sorted(prices["date"].unique()))
+    v = prices.pivot_table(index="date", columns="ticker", values="value", aggfunc="sum").reindex(days)
+    listed = v.notna()
+    avg_all = v.fillna(0).rolling(window, min_periods=1).sum() / window
+    n = listed.rolling(window, min_periods=1).sum()
+    avg = avg_all.where(n >= min_days)
+    rk = avg.rank(axis=1, ascending=False, method="first")
+    rows = []
+    for d in pd.DatetimeIndex(dates):
+        live = n.loc[d][n.loc[d] > 0].index          # 近 window 日內有交易紀錄的股票（含當天停牌者）
+        r = pd.DataFrame({"date": d, "ticker": live, "avg_value": avg_all.loc[d, live].values,
+                          "n_days": n.loc[d, live].values, "rank": rk.loc[d, live].values})
+        r["status"] = np.where(r["n_days"] < min_days, f"排除：近 {window} 日交易天數不足 {min_days} 天（新上市或停牌）",
+                               np.where(r["rank"] <= size, "入選", f"未入選：成交金額排名在 {size} 名之後"))
+        rows.append(r)
+    return pd.concat(rows, ignore_index=True)
+
+
 def eligibility_sampled(values: pd.DataFrame, trading_days, size: int = 300, k: int = 4, min_k: int = 3) -> pd.DataFrame:
     """上市逐日資料不齊時使用：只在「兩個市場都有全市場行情」的抽樣日（約每 5 個交易日）計算成交金額，
     每個交易日 t 以 t 當天（含）以前最近 k 個抽樣日的平均排名（約等於近 20 個交易日），出現少於 min_k 次者不納入；

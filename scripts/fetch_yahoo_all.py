@@ -35,7 +35,10 @@ def main(codes):
             x.reset_index().to_csv(OUT / f"{t}.csv", index=False)
         print(i + len(batch), "/", len(todo), "missing so far", len(missing), flush=True)
         time.sleep(8)
-    (OUT / "missing.txt").write_text("\n".join(missing))
+    # 累加寫入（每行一個代號）；已補到資料的代號自動移除，避免舊版把兩個代號黏在同一行的問題
+    old = set((OUT / "missing.txt").read_text().split()) if (OUT / "missing.txt").exists() else set()
+    keep = sorted(c for c in old | set(missing) if not (OUT / f"{c}.csv").exists() and len(c) == 7)
+    (OUT / "missing.txt").write_text("\n".join(keep) + "\n")
 
 if __name__ == "__main__":
     main(Path(sys.argv[1]).read_text().split())

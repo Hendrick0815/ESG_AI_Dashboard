@@ -18,6 +18,23 @@ HEAD_BG, STRIPE_BG = "1F3864", "EEF1F6"   # 表頭深藍白字、隔列淺底（
 SHOT_CSS_W = 760          # 截圖時表格容器寬度（px）；對應文件全寬 15.9 cm
 
 
+MONO = "Consolas"
+_CJK = re.compile(r"[⺀-鿿豈-﫿︰-﹏＀-￯　-〿‐-‧←-⇿①-⓿■-➿\U0001F300-\U0001FAFF]+")
+
+
+def _split_cjk(text):
+    """把一行程式切成（片段, 是否為中文／全形）；中文用標楷體，其餘用等寬字型。"""
+    out, pos = [], 0
+    for m in _CJK.finditer(text):
+        if m.start() > pos:
+            out.append((text[pos:m.start()], False))
+        out.append((m.group(0), True))
+        pos = m.end()
+    if pos < len(text):
+        out.append((text[pos:], False))
+    return out or [("", False)]
+
+
 def table_key(caption):
     """「表 4-1　績效比較」→「4-1」。"""
     m = re.match(r"表\s*([0-9A-Z]+-[0-9]+[a-z]?)", caption or "")
@@ -212,7 +229,7 @@ class Report:
             self.web_tables[-1]["note"] = text
         self._just_table = False
         p = self.doc.add_paragraph()
-        spacing(p, 3, 10, 1.25, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
+        spacing(p, 3, 10, 1.25, align=WD_ALIGN_PARAGRAPH.LEFT)
         rich(p, text, size=10)
 
     def table(self, header, rows, widths, align=None, size=10.5, header_size=None):
@@ -267,6 +284,48 @@ class Report:
         p = self.doc.add_paragraph()
         spacing(p, 6, 2, 1.0, keep_next=True, align=WD_ALIGN_PARAGRAPH.CENTER)
         p.add_run().add_picture(str(path), width=Cm(width_cm))
+
+    def code(self, title, blocks, size=7.5):
+        """程式碼清單：title 為標題（「程式 E-1　檔名：函式（第 a–b 行）」）；
+        blocks：[(起始行號, [程式行...]) 或 (None, 省略說明)]。每行一段：淺灰底、左側深藍線、灰色行號；長行自動換行並對齊。"""
+        p = self.doc.add_paragraph()
+        spacing(p, 8, 3, 1.2, keep_next=True)
+        add_text(p, title, bold=True, size=10)
+        n_all = sum(len(b[1]) if b[0] is not None else 1 for b in blocks)
+        k = 0
+        for start, body in blocks:
+            items = [(None, body)] if start is None else [(start + i, s) for i, s in enumerate(body)]
+            for ln, s in items:
+                k += 1
+                q = self.doc.add_paragraph()
+                pf = q.paragraph_format
+                pf.space_before = Pt(0); pf.space_after = Pt(0); pf.line_spacing = 1.0
+                pf.left_indent = Pt(34); pf.first_line_indent = Pt(-30)
+                pf.keep_with_next = k < n_all and (k < 3 or n_all - k < 3)   # 前後幾行不要單獨落在一頁
+                pf.widow_control = True
+                ppr = q._p.get_or_add_pPr()
+                bd = OxmlElement("w:pBdr")
+                lft = OxmlElement("w:left")
+                for a, v in (("w:val", "single"), ("w:sz", "18"), ("w:space", "4"), ("w:color", HEAD_BG)):
+                    lft.set(qn(a), v)
+                bd.append(lft); ppr.append(bd)
+                sh = OxmlElement("w:shd"); sh.set(qn("w:val"), "clear"); sh.set(qn("w:color"), "auto"); sh.set(qn("w:fill"), "F3F5F9")
+                ppr.append(sh)
+                if ln is None:
+                    r = q.add_run(f"      …（{s}）")
+                    _fonts(r, KAI); r.font.size = Pt(size); r.italic = True
+                    r.font.color.rgb = RGBColor(0x6B, 0x72, 0x80)
+                    continue
+                r = q.add_run(f"{ln:>5}  ")
+                _fonts(r, MONO); r.font.size = Pt(size - 0.5)
+                r.font.color.rgb = RGBColor(0x9A, 0xA0, 0xAA)
+                for seg, is_cjk in _split_cjk(s.rstrip("\n").replace("\t", "    ")):
+                    r = q.add_run(seg)
+                    _fonts(r, KAI if is_cjk else MONO); r.font.size = Pt(size)
+                    t_el = r._element.find(qn("w:t"))
+                    if t_el is not None:
+                        t_el.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        tail = self.doc.add_paragraph(); spacing(tail, 0, 4, 1.0)
 
     def page_break(self):
         self.doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)

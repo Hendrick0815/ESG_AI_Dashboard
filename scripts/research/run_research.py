@@ -167,6 +167,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=str(ROOT / "research_config.json"))
     ap.add_argument("--skip-long", action="store_true")
+    ap.add_argument("--data-snapshot", default=None,
+                    help="data/processed 使用的資料快照（例如 GitHub commit 代號），記錄在 manifest.json")
     ap.add_argument("--test-yahoo", action="store_true",
                     help="對照組：股票池改用平台「目前」成交金額前 300 大的 Yahoo 股價（有後見之明偏誤），輸出到 <run_id>_current_universe")
     a = ap.parse_args()
@@ -210,6 +212,13 @@ def main():
     rb = pd.DatetimeIndex(res.rebalance_dates)
     uh = elig[elig["date"].isin(rb)].merge(px[["date", "ticker", "name", "market"]], on=["date", "ticker"], how="left")
     uh.to_csv(out / "universe_history.csv", index=False)
+    # 逐期股票池的篩選結果與排除原因（每個調倉日、當天有行情的每一檔普通股）
+    u = cfg["universe"]
+    scr = ex.universe_screening(px, rb, u["size"], u["window_days"], u["min_trading_days"])
+    scr = scr.merge(px[["date", "ticker", "name", "market"]], on=["date", "ticker"], how="left")
+    scr.to_csv(out / "universe_screening.csv", index=False)
+    chk_sel = scr[scr["status"] == "入選"].groupby("date").size().reindex(rb).fillna(0)
+    assert (chk_sel.values == elig[elig["date"].isin(rb)].groupby("date").size().reindex(rb).fillna(0).values).all(), "篩選表與股票池不一致"
     us = ex.universe_summary(px, elig, rb)
     us.to_csv(out / "universe_summary.csv", index=False)
     us.describe().to_csv(tdir / "table_3_3_universe_summary.csv")
@@ -241,6 +250,22 @@ def main():
         bad += int((~np.isclose(g.set_index("ticker")["score"], e_ok.reindex(g["ticker"]).values)).sum())
     chk["esg_score_mismatch_total"] = bad
     chk.to_csv(out / "availability_checks.csv", index=False)
+    # 缺值紀錄：調倉日股票池內各變數缺值數與處理方式
+    panel = getattr(pipeline.Result, "panel", None)
+    if panel is not None:
+        feats = list(getattr(pipeline.Result, "wf_features", []) or [])
+        cols = [c for c in feats + ["esg_total", "e_score", "s_score", "g_score"] if c in panel.columns]
+        treat = {c: "訓練集中位數補值" for c in feats}
+        treat.update({"esg_total": "AI+ESG：ESG 排名視為中間值；規則式 ESG 篩選：不納入", "e_score": "僅用於 ESG 品質分析（不計入）",
+                      "s_score": "僅用於 ESG 品質分析（不計入）", "g_score": "僅用於 ESG 品質分析（不計入）"})
+        mv = []
+        for d in rb:
+            uni = set(elig[elig["date"] == d]["ticker"])
+            snap = panel[(panel["date"] == d) & panel["ticker"].isin(uni)]
+            for c in cols:
+                mv.append({"date": d.date(), "variable": c, "n_universe": len(snap), "n_missing": int(snap[c].isna().sum()),
+                           "missing_share": float(snap[c].isna().mean()) if len(snap) else np.nan, "treatment": treat.get(c, "")})
+        pd.DataFrame(mv).to_csv(out / "missing_values.csv", index=False)
     # 人工核對範例：3 個調倉日的單純 AI 前 5 檔
     ex_dates = [rb[0], rb[len(rb) // 2], rb[-1]]
     mc = []
@@ -425,22 +450,35 @@ def main():
 
     # ---------------- 版本紀錄
     files = {}
-    for f in sorted((ROOT / "data" / "raw" / "tej").glob("*.csv")) + [config.BENCH_FILE, config.VALUATION_FILE, config.LISTING_FILE]:
+    for f in sorted((ROOT / "data" / "raw" / "tej").glob("*.csv")) + [config.PRICES_FILE, config.BENCH_FILE, config.VALUATION_FILE, config.LISTING_FILE]:
         files[str(f.relative_to(ROOT))] = sha256(f)
     qfiles = sorted((ROOT / "data" / "raw" / "daily_quotes").glob("*.csv")) + sorted((ROOT / "data" / "raw" / "daily_quotes_twse").glob("*.gz"))
     hq_ = hashlib.sha256()
     for f in qfiles:
         hq_.update(f.name.encode()); hq_.update(sha256(f).encode())
     files["data/raw/daily_quotes*（合計 %d 檔）" % len(qfiles)] = hq_.hexdigest()
+    for sub, pat in (("yahoo_all", "*.csv"), ("finmind_twse", "*.csv")):
+        fs = sorted((ROOT / "data" / "raw" / sub).glob(pat))
+        if fs:
+            h_ = hashlib.sha256()
+            for f in fs:
+                h_.update(f.name.encode()); h_.update(sha256(f).encode())
+            files[f"data/raw/{sub}/（合計 {len(fs)} 檔）"] = h_.hexdigest()
+    for extra in [ROOT / "data" / "raw" / "twse_codes.csv", ROOT / "data" / "raw" / "yahoo_all" / "missing.txt", ROOT / "docs" / "parameter_trials.csv"]:
+        if extra.exists():
+            files[str(extra.relative_to(ROOT))] = sha256(extra)
     code = {str(f.relative_to(ROOT)): sha256(f) for f in sorted((ROOT / "src").rglob("*.py")) if "__pycache__" not in str(f)}
-    code["scripts/research/run_research.py"] = sha256(Path(__file__))
+    for f in ["scripts/research/run_research.py", "scripts/research/check_twse_coverage.py", "scripts/backfill_daily_quotes.py",
+              "scripts/fetch_yahoo_all.py", "scripts/fetch_finmind_twse.py"]:      # 產生結果的程式（產文程式另計）
+        if (ROOT / f).exists():
+            code[f] = sha256(ROOT / f)
     try:
         commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip() or None
     except Exception:
         commit = None
     import sklearn, scipy, statsmodels
     manifest = {"run_id": cfg["run_id"], "started": started, "finished": datetime.now().isoformat(timespec="seconds"),
-                "git_commit": commit, "config": cfg, "python": platform.python_version(),
+                "git_commit": commit, "data_snapshot": a.data_snapshot, "config": cfg, "python": platform.python_version(),
                 "packages": {"pandas": pd.__version__, "numpy": np.__version__, "scikit-learn": sklearn.__version__,
                              "scipy": scipy.__version__, "statsmodels": statsmodels.__version__},
                 "data_files_sha256": files, "code_sha256": code,

@@ -39,4 +39,4 @@ if __name__ == "__main__":
     a = sys.argv[1:]
     if a and a[0] == "--file":
         a = Path(a[1]).read_text().split()
-    main(a)
+    main([c.split(".")[0] for c in a])          # 接受 1262 或 1262.TW

@@ -62,7 +62,7 @@ def main():
             b = p.chromium.launch()
             pg = b.new_page(viewport={"width": 1100, "height": 1400}, device_scale_factor=SHOT_DPR, color_scheme="light")
             pg.goto(f"{base.rstrip('/')}/{quote(PAGE)}?all=1", wait_until="networkidle")
-            pg.wait_for_selector(".st-key-tbl-4-12", timeout=120_000)
+            pg.wait_for_selector(".st-key-tbl-4-14", timeout=120_000)
             pg.add_style_tag(content=CSS)
             pg.wait_for_selector(".st-key-fig-4-2 .main-svg", timeout=60_000)
             time.sleep(2)

@@ -105,21 +105,26 @@ def nav_figure() -> go.Figure:
 
 
 def esg_figure() -> go.Figure:
+    from plotly.subplots import make_subplots
     eq = csv("esg_quality_by_rebalance.csv")
     eq = eq[eq["date"] >= pd.Timestamp(CFG["backtest_start"])]
-    fig = go.Figure()
-    for name in ["規則式 ESG 篩選", "AI+ESG", "股票池等權", "單純 AI"]:
-        g = eq[eq["portfolio"] == name]
-        if g.empty:
-            continue
-        if name == "股票池等權":
-            line = dict(color=charts._c("#3f3e3b"), width=1.6, dash="dash")
-        else:
-            line = dict(color=charts.STRATEGY_COLORS[SITE_NAME[name]], width=2.4)
-        fig.add_trace(go.Scatter(x=g["date"], y=g["esg_total"], mode="lines", name=name, line=line,
-                                 hovertemplate="%{y:.1f}"))
-    fig = charts._layout(fig, "", height=360, y_title="持股加權 TESG 分數")
-    fig.update_xaxes(tickformat="%Y-%m")
+    panels = [("esg_total", "TESG 總分"), ("e_score", "環境 E"), ("s_score", "社會 S"), ("g_score", "治理 G")]
+    fig = make_subplots(rows=2, cols=2, shared_xaxes=True, subplot_titles=[t for _, t in panels],
+                        vertical_spacing=0.12, horizontal_spacing=0.07)
+    for k, (col, _) in enumerate(panels):
+        r, c = k // 2 + 1, k % 2 + 1
+        for name in ["規則式 ESG 篩選", "AI+ESG", "股票池等權", "單純 AI"]:
+            g = eq[eq["portfolio"] == name]
+            if g.empty or col not in g:
+                continue
+            if name == "股票池等權":
+                line = dict(color=charts._c("#3f3e3b"), width=1.4, dash="dash")
+            else:
+                line = dict(color=charts.STRATEGY_COLORS[SITE_NAME[name]], width=2.0)
+            fig.add_trace(go.Scatter(x=g["date"], y=g[col], mode="lines", name=name, line=line, showlegend=(k == 0),
+                                     legendgroup=name, hovertemplate="%{y:.1f}"), row=r, col=c)
+    fig = charts._layout(fig, "", height=520)
+    fig.update_xaxes(tickformat="%Y")
     return fig
 
 
@@ -132,11 +137,11 @@ for name in ["單純 AI", "AI+ESG", "規則式 ESG 篩選", "0050", "00850"]:
         cards.append((f"{name} 年化報酬", f"{r['年化報酬']:.1%}", f"Sharpe {r['Sharpe']:.2f}｜最大回撤 {r['最大回撤']:.1%}"))
 metric_cards(cards, min_width=180)
 
-NAMES = ["股票池與期間", "績效", "市場情境", "統計檢定", "交易成本", "ESG 品質", "模型"]
+NAMES = ["樣本與期間", "投組績效", "風險比較", "統計檢定", "穩健性測試"]     # 對應論文第三章第一節與第四章四節
 # ?all=1：全部依序展開（給 capture_web.py 截圖用）；平常以分頁顯示
 tabs = [st.container() for _ in NAMES] if st.query_params.get("all") else st.tabs(NAMES)
 with tabs[0]:
-    for k in ["3-3", "3-7", "3-8"]:
+    for k in ["3-3", "3-4", "3-8"]:
         show_table(k)
 with tabs[1]:
     show_table("4-1")
@@ -144,22 +149,17 @@ with tabs[1]:
                 "起點 = 1（評估期第一天）；策略已扣手續費與證交稅。來源：strategy_returns.csv。")
     show_table("4-2")
     show_table("4-3")
-with tabs[2]:
-    show_table("4-4")
-    show_table("4-5")
-with tabs[3]:
-    show_table("4-6")
-    show_table("4-7")
-with tabs[4]:
-    show_table("4-8")
-    show_table("4-9")
-with tabs[5]:
-    show_table("4-10")
-    show_figure("4-2", "圖 4-2 各調倉日持股加權 TESG 分數", esg_figure(),
+    show_figure("4-2", "圖 4-2 各調倉日持股加權 TESG 與 E／S／G 分數", esg_figure(),
                 "「股票池等權」為當期 300 檔等權，作為市場代理。來源：esg_quality_by_rebalance.csv。")
-with tabs[6]:
-    show_table("4-11")
-    show_table("4-12")
+with tabs[2]:
+    for k in ["4-4", "4-5", "4-6"]:
+        show_table(k)
+with tabs[3]:
+    for k in ["4-7", "4-8", "4-9", "4-10"]:
+        show_table(k)
+with tabs[4]:
+    for k in ["4-11", "4-12", "4-13", "4-14"]:
+        show_table(k)
 
 with st.expander("下載與重現方式"):
     st.markdown("在乾淨環境重現：`pip install -r requirements-lock.txt` → `python scripts/research/run_research.py` → "

@@ -13,14 +13,24 @@ from src.ui.common import metric_cards, setup_page
 setup_page("大盤趨勢", "🧭")
 st.title("🧭 大盤趨勢")
 
-if not config.MACRO_FILE.exists():
-    st.info("還沒有大盤長期資料。請執行 `py scripts/update_data.py --auto`（會下載 1997 年起的加權指數、美股、VIX）。")
+HAS_MACRO = config.MACRO_FILE.exists()
+SRC = config.MACRO_FILE if HAS_MACRO else config.BENCH_FILE
+if not SRC.exists():
+    st.info("還沒有大盤資料。請執行 `py scripts/update_data.py --auto`。")
     st.stop()
 
 
+def load_wide():
+    if HAS_MACRO:
+        return mt.load_macro()
+    # 長期資料（macro.csv）還沒產生時，先用比較基準檔裡的加權指數（2017 起）判斷；美股、VIX 兩項顯示「—」
+    b = pd.read_csv(config.BENCH_FILE, parse_dates=["date"], encoding="utf-8-sig")
+    return b.pivot_table(index="date", columns="ticker", values="close").sort_index()
+
+
 @st.cache_data(show_spinner="判斷大盤趨勢…")
-def trend(mtime: float):
-    w = mt.load_macro()
+def trend(mtime: float, src: str):
+    w = load_wide()
     return None if w is None or "^TWII" not in w else mt.current_trend(w)
 
 
@@ -29,11 +39,13 @@ def outlook(mtime: float):
     return mt.run()
 
 
-mtime = config.MACRO_FILE.stat().st_mtime
-tr = trend(mtime)
+mtime = SRC.stat().st_mtime
+tr = trend(mtime, str(SRC))
 if tr is None:
     st.warning("大盤資料不足，無法判斷。")
     st.stop()
+if not HAS_MACRO:
+    st.info("長期大盤資料（美股、VIX）還沒產生，目前只用加權指數判斷；下一次每日自動更新後會補上。")
 
 ICON = {"牛市": "🐂", "偏多": "📈", "盤整": "↔️", "偏空": "📉", "熊市": "🐻"}
 COLOR = {"牛市": "rgba(27,175,122,0.22)", "偏多": "rgba(27,175,122,0.10)", "盤整": "rgba(128,128,128,0.0)",
@@ -83,9 +95,9 @@ st.caption("底色＝當天收盤後依同一套規則的判斷（深綠牛市�
 
 # ------------------------------------------------------------------ 未來 1 個月展望（參考）
 with st.expander("未來 1 個月展望（模型預測，僅供參考）"):
-    res = outlook(mtime)
+    res = outlook(mtime) if HAS_MACRO else None
     if res is None:
-        st.info("資料不足，無法計算。")
+        st.info("需要 1997 年起的長期大盤資料，下一次每日自動更新後提供。" if not HAS_MACRO else "資料不足，無法計算。")
     else:
         M, L = res.metrics, res.latest
         pv, p20 = L["hivol20"]["p"], L["up20"]["p"]
