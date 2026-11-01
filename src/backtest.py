@@ -268,6 +268,33 @@ def market_regime(bench: pd.DataFrame, index: str = config.MARKET_INDEX, ma: int
     return out
 
 
+def pullback_exposure(bench: pd.DataFrame, index: str = config.MARKET_INDEX, window: int = config.PULLBACK_WINDOW,
+                      dd: float = config.PULLBACK_DD, weak: float = config.PULLBACK_EXPOSURE,
+                      fallback: Optional[pd.DataFrame] = None) -> Optional[pd.Series]:
+    """短期轉弱減碼：加權指數收盤價距近 window 日最高收盤價跌幅 ≤ dd → weak，否則 1.0。只用當天（含）以前的收盤價。"""
+    px = None
+    if bench is not None and not bench.empty and index in set(bench["ticker"]):
+        px = bench[bench["ticker"] == index].set_index("date")["close"].sort_index()
+        if fallback is not None:
+            px = px.reindex(px.index.union(fallback.index)).ffill().reindex(fallback.index)
+    elif fallback is not None and not fallback.empty:
+        px = (1 + fallback.mean(axis=1).fillna(0)).cumprod()
+    if px is None or px.notna().sum() < window:
+        return None
+    draw = px / px.rolling(window, min_periods=window).max() - 1
+    out = pd.Series(np.where(draw <= dd, weak, 1.0), index=px.index)
+    out[draw.isna()] = 1.0
+    return out
+
+
+def combine_exposure(*series: Optional[pd.Series]) -> Optional[pd.Series]:
+    """多個減碼規則同時使用時取最低的持股比例。"""
+    s = [x for x in series if x is not None]
+    if not s:
+        return None
+    return pd.concat(s, axis=1).min(axis=1)
+
+
 def benchmark_returns(bench: pd.DataFrame, start: pd.Timestamp, end: pd.Timestamp) -> pd.DataFrame:
     if bench is None or bench.empty:
         return pd.DataFrame(columns=["date", "portfolio", "ret", "nav"])

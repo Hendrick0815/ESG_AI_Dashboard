@@ -16,6 +16,8 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from . import config
+
 try:
     from sklearn.ensemble import RandomForestRegressor
     SKLEARN_AVAILABLE = True
@@ -123,7 +125,8 @@ def walk_forward(panel: pd.DataFrame, features: List[str], rebalance_dates: List
                 continue
             medians = train[cols].median()
             X = train[cols].fillna(medians)
-            y = train["fwd_ret"] - train.groupby("date")["fwd_ret"].transform("mean")
+            y = train["fwd_ret"] - train.groupby("date")["fwd_ret"].transform("mean") if config.TARGET_RELATIVE \
+                else train["fwd_ret"]
             model = Model(model_name, n_estimators).fit(X, y)
             used = cols
             train_log.append({"rebalance_date": t, "train_end": cutoff, "n_samples": len(train),

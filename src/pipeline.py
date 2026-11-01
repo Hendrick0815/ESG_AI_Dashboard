@@ -8,7 +8,7 @@ import pandas as pd
 
 from . import backtest as bt
 from . import config
-from .features import INDUSTRY_FEATURES, PEAK_FEATURES, build_panel
+from .features import INDUSTRY_FEATURES, MARKET_FEATURES, PEAK_FEATURES, add_market_features, build_panel
 from .metrics import performance_table
 from .models import walk_forward
 from .store import Dataset
@@ -26,6 +26,7 @@ class Params:
     end: Optional[str] = None
     tickers: Optional[tuple] = None          # None = 使用資料裡全部股票
     risk_control: bool = config.DEFAULT_RISK_CONTROL   # True：不買跌破年線／最震盪的股票＋大盤跌破年線持股減半
+    pullback_control: bool = config.DEFAULT_PULLBACK_CONTROL   # True：加權指數距 20 日高點跌逾 5% 時持股減半
 
     @property
     def hold_days(self) -> int:
@@ -83,6 +84,8 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
     if info["esg_static"]:
         notes.append("⚠️ ESG 以「最新一期」回填到所有歷史日期，回測含前視偏差，只能當對照組。")
 
+    if config.USE_MARKET_FEATURES:
+        panel = add_market_features(panel, ds.benchmarks)
     full_panel = panel
     elig = getattr(ds, "eligible", None)
     if elig is not None and not elig.empty:
@@ -106,6 +109,8 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
              if (config.USE_PEAK_FEATURES or f not in PEAK_FEATURES)
              and (config.USE_INDUSTRY_FEATURES or f not in INDUSTRY_FEATURES)]
     features = info["tech_features"] + extra + info["fin_features"]      # 模型不使用 ESG（ESG 另外融合）
+    if config.USE_MARKET_FEATURES:
+        features += [f for f in MARKET_FEATURES if f in panel.columns]
     wf = walk_forward(panel, features, pred_dates, trading_days, p.hold_days, p.model_name,
                       p.n_estimators, retrain_every=config.RETRAIN_EVERY, required=info["tech_features"],
                       progress=progress)
@@ -142,10 +147,13 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
 
     ret_wide = full_panel.pivot_table(index="date", columns="ticker", values="ret_1d").sort_index()
     risk = None
-    if p.risk_control:
+    if p.risk_control or p.pullback_control:
         if ds.benchmarks.empty or config.MARKET_INDEX not in set(ds.benchmarks["ticker"]):
-            notes.append("找不到加權指數（^TWII），大盤年線改用股票池等權平均計算。")
-        risk = bt.RiskControl(market_exposure=bt.market_regime(ds.benchmarks, fallback=ret_wide))
+            notes.append("找不到加權指數（^TWII），大盤指標改用股票池等權平均計算。")
+        expo = bt.combine_exposure(
+            bt.market_regime(ds.benchmarks, fallback=ret_wide) if p.risk_control else None,
+            bt.pullback_exposure(ds.benchmarks, fallback=ret_wide) if p.pullback_control else None)
+        risk = bt.RiskControl(market_exposure=expo)
     series, trades, risk_rows = [], [], []
     for strat in bt.STRATEGIES:
         if not targets[strat]:

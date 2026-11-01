@@ -13,6 +13,14 @@ from src.ui.common import (HOLDINGS_NOTE, get_result, holdings_block, metric_car
                            setup_page, show_notes, sidebar_data, sidebar_strategy, stock_info)
 from src.utils import to_csv_bytes
 
+
+
+@st.cache_data(show_spinner=False)
+def _macro(mtime: float):
+    from src import market_trend as mt
+    return mt.load_macro()
+
+
 setup_page("策略回測", "📈")
 ds, mode, demo_set = sidebar_data()
 require_prices(ds)
@@ -64,11 +72,13 @@ with tab1:
     c1, c2 = st.columns(2)
     c1.plotly_chart(charts.risk_return_scatter(sub_perf, labels), width="stretch")
     c2.plotly_chart(charts.drawdown_chart(sub_ret, labels), width="stretch")
-    if not res.risk_log.empty:
+    if not res.risk_log.empty and (params.risk_control or params.pullback_control):
         rl = res.risk_log if full else res.risk_log[(res.risk_log["date"] > a) & (res.risk_log["date"] <= b)]
         if not rl.empty:
             st.plotly_chart(charts.exposure_chart(rl), width="stretch")
-            st.caption("持股比例：加權指數在年線之上時 100%，跌破年線時 50%（其餘為現金）。")
+            rules = (["加權指數跌破年線"] if params.risk_control else []) + \
+                    ([f"加權指數距 {config.PULLBACK_WINDOW} 日高點跌逾 {-config.PULLBACK_DD:.0%}"] if params.pullback_control else [])
+            st.caption(f"持股比例：{'或'.join(rules)}時降為 50%（其餘為現金），否則 100%。")
     with st.expander("指標怎麼看"):
         st.markdown(
             f"- **年化報酬**：幾何年化，(1+累積報酬)^(252/天數) − 1\n"
@@ -99,15 +109,30 @@ with tab2:
         info = stock_info(res, ds, d)
 
         # 先算三個策略的預估，再用「同一個縱軸範圍」畫圖，單位與刻度一致才能直接比較
-        fcs, subs = {}, {}
+        wide = forecast.market_wide(ds.benchmarks, _macro(config.MACRO_FILE.stat().st_mtime) if config.MACRO_FILE.exists() else None)
+        fcs, subs, fc_info = {}, {}, {}
         for strat in STRATEGIES:
             sub = res.holdings[(res.holdings["date"] == d) & (res.holdings["portfolio"] == strat)]
             subs[strat] = sub
             if not sub.empty and len(window):
-                fcs[strat] = forecast.holding_forecast(sub, res.evaluation, res.returns, ds.benchmarks, strat, d,
-                                                       window, params.hold_days)["path"]
+                fc = forecast.holding_forecast(sub, res.evaluation, res.returns, ds.benchmarks, strat, d,
+                                               window, params.hold_days, wide=wide)
+                fcs[strat], fc_info[strat] = fc["path"], fc
         st.markdown(f"**持有期間**：{d:%Y-%m-%d} 收盤買進 → {end:%Y-%m-%d} 調倉（共 {len(window)} 個交易日"
                     + ("，尚未走完" if d == dates[0] and end > pd.Timestamp(res.latest_date) else "") + "）")
+        if fc_info:
+            any_fc = next(iter(fc_info.values()))
+            v, vu = any_fc["view"], any_fc["view_upd"]
+
+            def view_text(x, when):
+                if not x or x["state"] is None:
+                    return f"{when}：大盤狀態資料不足，大盤部分改用長期平均年化 {config.MARKET_DRIFT_ANNUAL:.0%}"
+                return (f"{when}大盤狀態 **{x['state']}**：過去同狀態之後 {params.hold_days} 個交易日，加權指數平均 "
+                        f"{x['cond_mean']:+.1%}、上漲機率 {x['up_prob']:.0%}（{x['n']:,} 天）")
+            st.markdown("- " + view_text(v, f"調倉日（{d:%m/%d}）") +
+                        ("\n- " + view_text(vu, "最新一天") if vu else ""))
+            st.caption("大盤狀態以「大盤趨勢」頁的 7 項指標判斷；牛市或偏多但距 20 日高點跌逾 5% 標為「回檔」。"
+                       "大盤短期漲跌方向的預測力很低（樣本外 AUC 約 0.5），上漲機率只反映歷史上同狀態之後的實際比例，不代表模型能預測方向。")
         if fcs:
             items = {}
             for strat, path in fcs.items():
@@ -137,7 +162,9 @@ with tab2:
                                                       y_range=y_range, end_date=end), width="stretch")
                 last = path.iloc[-1]
                 act = path["actual"].dropna()
-                cards = [("預估期末", f"{last['expected']:+.1%}", f"68% 區間 {last['lo68']:+.1%} ～ {last['hi68']:+.1%}")]
+                cards = [("預估期末", f"{last['expected']:+.1%}",
+                          f"68% 區間 {last['lo68']:+.1%} ～ {last['hi68']:+.1%}"),
+                         ("期末虧損機率", f"{fc_info[strat]['p_loss']:.0%}", f"策略 Beta {fc_info[strat]['beta']:.2f}")]
                 if len(act) > 1:
                     upto = "" if len(act) == len(path) else f"（到 {path.loc[act.index[-1], 'date']:%m/%d}）"
                     mk = path["market"].dropna()
@@ -150,8 +177,10 @@ with tab2:
         st.caption(HOLDINGS_NOTE)
         st.caption(
             "**走勢圖**：三張圖縱軸範圍與刻度相同（每格 5%），都是從調倉日收盤起算的累積報酬。"
-            f"**虛線**＝調倉日當天的模型預估（大盤長期平均年化 {config.MARKET_DRIFT_ANNUAL:.0%} ＋ 持股 AI 預測超額的權重平均，平均分攤到持有期間），之後不再改，用來檢驗模型；"
-            "**點虛線＋灰帶**＝更新後預估：從最新的實際報酬接著估剩下的天數（68% 區間）；"
+            "**虛線**＝調倉日當天的模型預估＝策略 Beta ×（調倉日大盤狀態下的預期大盤報酬）＋ 持股 AI 預測超額的權重平均，平均分攤到持有期間；"
+            "之後不再改，用來檢驗模型；"
+            "**點虛線＋灰帶**＝更新後預估：從最新的實際報酬接著估剩下的天數，大盤部分改用最新一天的大盤狀態（68% 區間）；"
+            "**期末虧損機率**＝依預估與波動以常態近似計算期末報酬為負的機率（2022-11 起平均約 40%，實際虧損比例約 35%）；"
             "**色帶**＝依該策略過去 60 個交易日的波動，約 68%（深色）／95%（淺色，超出縱軸的部分不顯示）機率落在範圍內；"
             "**實線**＝實際走勢（已扣當天交易成本）；**灰色點線**＝加權指數實際走勢。預估只用調倉日以前的資料。"
             "AI 分數適合排序，當成報酬預估時通常偏保守，實際漲跌主要由大盤決定。")
@@ -232,6 +261,11 @@ with tab5:
 1. **不買跌破年線的股票**：收盤價在 {config.STOCK_TREND_MA} 日均線之下就不買。
 2. **不買最震盪的 20%**：近 60 日波動最高的 {1 - config.VOL_CAP_QUANTILE:.0%} 不買。
 3. **大盤跌破年線持股減半**：加權指數在 {config.MARKET_MA} 日均線之下時，持股降為 {config.MARKET_WEAK_EXPOSURE:.0%}、其餘放現金。
+
+#### 短期轉弱減碼（選用）{"　✅ 目前開啟" if params.pullback_control else "　目前關閉"}
+「跌破年線」反應較慢，牛市中的急跌回檔常常不會觸發。勾選後，加權指數收盤價距近 {config.PULLBACK_WINDOW} 個交易日最高收盤價
+跌幅超過 {-config.PULLBACK_DD:.0%} 時，持股降為 {config.PULLBACK_EXPOSURE:.0%}，回到 {-config.PULLBACK_DD:.0%} 以內恢復滿倉（每天收盤檢查、只調整比例不換股）。
+可減少回檔時的虧損與最大回撤，代價是報酬降低、換倉次數增加；可與上面的風險控制同時使用，取較低的持股比例。
 
 #### 回測規則
 - **每 {config.REBALANCE_WEEKS} 週**調倉一次（從回測起點起算，固定同一個星期幾，遇假日順延），以當天收盤價換股，報酬從**下一個交易日**開始計算。

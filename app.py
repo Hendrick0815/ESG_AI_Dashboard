@@ -107,7 +107,8 @@ if res.rebalance_dates:
                 + ("今天就是調倉日。" if _last_rb == pd.Timestamp(res.latest_date) else "下面是用最新收盤價算出的名單，供下次調倉參考。"))
 st.caption(f"樣本外回測期間：{res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}｜每 {config.REBALANCE_WEEKS} 週調倉｜"
            f"{params.weighting}｜Top {params.top_n}｜模型 {params.model_name}｜"
-           f"{'風險控制：避開跌破年線與最震盪的股票、大盤跌破年線持股減半' if params.risk_control else '目標最高報酬（不做風險控制）'}")
+           f"{'風險控制：避開跌破年線與最震盪的股票、大盤跌破年線持股減半' if params.risk_control else '目標最高報酬（不做風險控制）'}"
+           f"{'｜短期轉弱減碼：大盤距 20 日高點跌逾 5% 持股減半' if params.pullback_control else ''}")
 
 perf = res.perf.set_index("portfolio")
 cards = []
@@ -120,10 +121,10 @@ bench_key = next((b for b in config.BENCHMARKS if b in perf.index), None)
 if bench_key:
     cards.append((f"{labels.get(bench_key, bench_key)} 年化報酬", fmt_pct(perf.loc[bench_key, "ann_return"]),
                   f"累積 {fmt_pct(perf.loc[bench_key, 'cum_return'])}｜最大回撤 {fmt_pct(perf.loc[bench_key, 'max_drawdown'])}"))
-if params.risk_control and not res.risk_log.empty:
+if (params.risk_control or params.pullback_control) and not res.risk_log.empty:
     expo = res.risk_log[res.risk_log["date"] == res.risk_log["date"].max()]["exposure"].max()
-    cards.append(("目前建議持股比例", fmt_pct(expo),
-                  "加權指數在年線之上" if expo >= 0.99 else "加權指數跌破年線，持股減半"))
+    rule = "、".join(([] if not params.risk_control else ["跌破年線"]) + ([] if not params.pullback_control else ["距 20 日高點跌逾 5%"]))
+    cards.append(("目前建議持股比例", fmt_pct(expo), "大盤未觸發減碼條件" if expo >= 0.99 else f"大盤觸發減碼（{rule}），持股減半"))
 metric_cards(cards, min_width=200)
 
 st.page_link("pages/0_大盤趨勢預測.py", label="看大盤趨勢", icon="🧭")

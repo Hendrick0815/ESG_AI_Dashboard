@@ -16,7 +16,7 @@ from . import config
 
 log = logging.getLogger(__name__)
 
-CACHE_VERSION = "2026-10-27-biweekly"   # 回測邏輯有改時換掉，舊存檔就不會被用到
+CACHE_VERSION = "2026-11-01-pullback"   # 回測邏輯有改時換掉，舊存檔就不會被用到
 KEEP_FILES = 30
 
 
@@ -51,7 +51,8 @@ def data_stamp(mode: str, demo_set: Optional[str] = None) -> Tuple:
 
 
 def result_key(mode: str, demo_set: Optional[str], stamp: Tuple, params) -> str:
-    raw = repr((CACHE_VERSION, mode, demo_set, stamp, sorted(asdict(params).items())))
+    flags = (config.USE_MARKET_FEATURES, config.TARGET_RELATIVE)      # 影響模型、但不在側邊欄的設定
+    raw = repr((CACHE_VERSION, mode, demo_set, stamp, sorted(asdict(params).items()), flags))
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 

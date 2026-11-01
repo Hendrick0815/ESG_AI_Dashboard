@@ -100,6 +100,13 @@ MARKET_INDEX = "^TWII"          # ③ 大盤濾網：加權指數跌破年線 �
 MARKET_MA = 200
 MARKET_WEAK_EXPOSURE = 0.5
 EXPOSURE_STEP = 0.1             # 持股比例的最小調整單位
+# 短期轉弱減碼（選用，與上面的風險控制可同時使用）：加權指數收盤價距近 PULLBACK_WINDOW 日最高收盤價
+# 跌幅超過 PULLBACK_DD 時，持股降為 PULLBACK_EXPOSURE；回到門檻以內恢復滿倉。只用當天收盤以前的資料。
+# 2022-11～2026-10 試算（單純 AI，目前前 300 大股票池）：年化約 112% → 101%，最大回撤約 −46% → −41%。
+PULLBACK_WINDOW = 20
+PULLBACK_DD = -0.05
+PULLBACK_EXPOSURE = 0.5
+DEFAULT_PULLBACK_CONTROL = False
 
 # ---- 選股特徵與產業 ----
 # 2018-11～2026-10 回測、3 組隨機種子比較（單純 AI、等權 Top 20 年化）：
@@ -109,6 +116,13 @@ EXPOSURE_STEP = 0.1             # 持股比例的最小調整單位
 #   改用產業近 3／6 月報酬或季線乖離也一樣越加越差 → 預設不加分，產業資訊放在「產業與籌碼」頁參考
 USE_PEAK_FEATURES = True        # 見頂訊號：距 20 日高點跌幅、高點距今天數、連續下跌天數、量能比、短期反轉
 USE_INDUSTRY_FEATURES = False   # 產業趨勢＋個股相對產業強弱當模型特徵：回測變差，預設不用
+# 大盤狀態特徵（加權指數年線乖離、年線斜率、距一年高點回撤、20 日報酬與波動、7 項趨勢指標分數）：
+# 讓模型能依牛熊狀態調整選股。2026-11 測試（目前前 300 大、2022-11～2026-10、單一隨機種子）：
+# 單純 AI 年化 112% → 129%、Rank IC 0.026 → 0.030，但最大回撤 −46% → −50%、Beta 仍約 1.22，
+# 弱勢期持股波動沒有降低；AI+ESG 年化 78% → 72%。改善不一致且未降低下跌風險，預設不用。
+USE_MARKET_FEATURES = False
+# 預測目標：True = 個股未來報酬減當天全體平均（相對報酬，只學「誰比較好」）；False = 原始報酬（也學大盤漲跌）
+TARGET_RELATIVE = True
 MAX_PER_INDUSTRY = 0            # 同一產業最多持有幾檔（0 = 不限制，預設）
 INDUSTRY_TREND_FILTER = False   # True：只買所屬產業在季線之上的股票：回測變差，預設不用
 INDUSTRY_TREND_WEIGHT = 0.0     # AI 分數 =（1−w）× AI 排名 ＋ w × 產業趨勢排名（不排除、不限制檔數）；回測越加越差，預設 0

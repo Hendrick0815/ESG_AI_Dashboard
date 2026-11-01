@@ -318,6 +318,21 @@ def test_market_regime_halves_exposure_without_lookahead():
     assert r1.iloc[:-1].equals(r2.iloc[:-1])
 
 
+def test_pullback_exposure_threshold_and_no_lookahead():
+    """短期轉弱減碼：距 20 日高點跌逾 5% 才減半；只用當天以前的收盤價；可與年線規則合併取最低。"""
+    days = pd.bdate_range("2026-01-01", periods=30)
+    close = [100.0] * 20 + [99, 96, 94.9, 97, 99, 100, 100, 100, 100, 100]
+    bench = pd.DataFrame({"date": days, "ticker": "^TWII", "close": close})
+    e = bt.pullback_exposure(bench)
+    assert list(e.iloc[:19]) == [1.0] * 19                  # 不足 20 天：不減碼
+    assert e.iloc[21] == 1.0 and e.iloc[22] == 0.5 and e.iloc[23] == 1.0   # −4%、−5.1%、−3%
+    bench2 = bench.copy()
+    bench2.loc[bench2.index[-1], "close"] = 50.0           # 改最後一天，前面的判斷不能變
+    assert bt.pullback_exposure(bench2).iloc[:-1].equals(e.iloc[:-1])
+    both = bt.combine_exposure(e, pd.Series(0.5, index=days[:5]))
+    assert both.iloc[0] == 0.5 and both.iloc[22] == 0.5 and both.iloc[25] == 1.0
+
+
 def test_parse_t86():
     fields = ["證券代號", "證券名稱", "外陸資買賣超股數(不含外資自營商)", "外資自營商買賣超股數",
               "投信買賣超股數", "自營商買賣超股數", "自營商買賣超股數(自行買賣)", "三大法人買賣超股數"]
@@ -430,9 +445,36 @@ def test_holding_forecast():
     fc = forecast.holding_forecast(hold, ev, returns, bench, "單純 AI", d, w, 10)
     p = fc["path"]
     assert abs(fc["excess"] - 0.03) < 1e-12                     # 只用持股 A、B 的預測
-    assert abs(p["expected"].iloc[-1] - ((1.001) ** 10 - 1 + 0.03)) < 1e-6
+    assert abs(p["expected"].iloc[-1] - (fc["beta"] * ((1 + fc["drift"]) ** 10 - 1) + 0.03)) < 1e-9
+    assert fc["view"]["state"] is None                           # 指數只有 120 天，無法判斷狀態 → 用長期平均
+    assert abs(fc["drift"] - forecast.market_drift()) < 1e-12
     assert (p["hi95"] >= p["hi68"]).all() and (p["lo95"] <= p["lo68"]).all()
     assert p["actual"].notna().all() and p["actual"].iloc[0] == 0
     # 最後一期沒有未來資料 → 補成平日，實際走勢為空
     w2 = forecast.holding_window([d], days[-1], days[-1], days, 10)
     assert len(w2) == 10 and w2[0] > days[-1]
+
+
+def test_market_view_uses_only_past_and_follows_state():
+    """大盤狀態預估：只用 d 以前已實現的 10 日報酬；同狀態的歷史平均為負時，預期大盤報酬也為負。"""
+    from src import forecast
+    rng = np.random.default_rng(3)
+    days = pd.bdate_range("2015-01-01", periods=1500)
+    close = 100 * np.cumprod(1 + rng.normal(0.0003, 0.01, len(days)))
+    wide = pd.DataFrame({"^TWII": close}, index=days)
+    d = days[1200]
+    v = forecast.market_view(wide, d, 10)
+    assert v["state"] is not None and v["n"] > 0
+    m = (v["n"] * v["cond_mean"] + forecast.STATE_SHRINK * v["all_mean"]) / (v["n"] + forecast.STATE_SHRINK)
+    assert abs(v["drift"] - ((1 + m) ** 0.1 - 1)) < 1e-12
+    wide2 = wide.copy()
+    wide2.iloc[1201:] *= 0.5                                     # 改掉 d 之後的價格，d 當天的判斷不能變
+    forecast._TS_CACHE.clear()
+    v2 = forecast.market_view(wide2, d, 10)
+    assert v2["state"] == v["state"] and abs(v2["drift"] - v["drift"]) < 1e-12
+    # 策略 Beta：報酬 = 1.5 × 大盤
+    r = rng.normal(0, 0.01, 200)
+    days2 = pd.bdate_range("2026-01-01", periods=200)
+    ret = pd.concat([pd.DataFrame({"date": days2, "portfolio": "^TWII", "ret": r}),
+                     pd.DataFrame({"date": days2, "portfolio": "單純 AI", "ret": 1.5 * r})])
+    assert abs(forecast.strategy_beta(ret, "單純 AI", days2[-1]) - 1.5) < 1e-9

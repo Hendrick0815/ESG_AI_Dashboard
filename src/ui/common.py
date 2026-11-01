@@ -113,6 +113,11 @@ def sidebar_strategy(ds: store.Dataset) -> Params:
                  "② 不買近 60 日波動最高的 20% 股票\n\n"
                  "③ 加權指數跌破年線時持股減半，站回年線恢復滿倉\n\n"
                  "預設關閉（以最高報酬為目標）；勾選可以比較降低回撤後的結果。"))
+        pull_on = _keep("pull_on", st.checkbox(
+            "短期轉弱減碼（大盤回檔時持股減半）", _remember("pull_on", config.DEFAULT_PULLBACK_CONTROL),
+            help=f"加權指數收盤價距近 {config.PULLBACK_WINDOW} 日最高收盤價跌幅超過 {-config.PULLBACK_DD:.0%} 時，"
+                 f"持股降為 {config.PULLBACK_EXPOSURE:.0%}（其餘為現金）；回到 {-config.PULLBACK_DD:.0%} 以內恢復滿倉。\n\n"
+                 "反應比「跌破年線」快，可減少回檔時的虧損與最大回撤；代價是報酬降低、換倉次數增加。"))
         with st.expander("進階"):
             trees = _keep("trees", st.slider("樹的數量", 50, 500, _remember("trees", config.DEFAULT_N_ESTIMATORS), 50))
             static_esg = _keep("static_esg", st.checkbox(
@@ -125,7 +130,7 @@ def sidebar_strategy(ds: store.Dataset) -> Params:
     return Params(model_name=model, top_n=top_n, n_estimators=trees, esg_weight=esg_w,
                   weighting=weighting, static_esg=static_esg,
                   tickers=tuple(sorted(picked)) or None,
-                  risk_control=risk_on)
+                  risk_control=risk_on, pullback_control=pull_on)
 
 
 def get_result(mode: str, demo_set: Optional[str], params: Params) -> Optional[Result]:

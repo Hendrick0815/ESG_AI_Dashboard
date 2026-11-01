@@ -31,6 +31,24 @@ TECH_LABELS = {
 NON_FEATURE = {"ticker", "available_date", "name", "industry", "sasb_industry", "esg_grade",
                "period", "source_file", "code", "market", "date"}
 RISK_COLS = ["above_ma_long", "vol_60"]     # 風險控制用（不給 AI 模型）
+MARKET_FEATURES = ["mkt_gap200", "mkt_slope200", "mkt_dd250", "mkt_ret20", "mkt_vol20", "mkt_trend_score"]
+TECH_LABELS.update({"mkt_gap200": "大盤年線乖離", "mkt_slope200": "大盤年線斜率", "mkt_dd250": "大盤距一年高點",
+                    "mkt_ret20": "大盤近 1 月報酬", "mkt_vol20": "大盤 20 日波動", "mkt_trend_score": "大盤趨勢分數（7 項指標）"})
+
+
+def add_market_features(panel: pd.DataFrame, bench: Optional[pd.DataFrame], index: str = config.MARKET_INDEX) -> pd.DataFrame:
+    """大盤狀態特徵：同一天所有股票相同的值，只用當天（含）收盤以前的加權指數（美股、VIX 用前一晚）。"""
+    if bench is None or bench.empty or index not in set(bench["ticker"]):
+        return panel
+    from .market_trend import trend_series
+    wide = bench.pivot_table(index="date", columns="ticker", values="close").sort_index()
+    ts = trend_series(wide)
+    px = ts["close"]
+    m = pd.DataFrame({"mkt_gap200": ts["gap200"], "mkt_slope200": ts["slope200"], "mkt_dd250": ts["dd250"],
+                      "mkt_ret20": px.pct_change(20), "mkt_vol20": px.pct_change().rolling(20).std() * np.sqrt(config.TRADING_DAYS),
+                      "mkt_trend_score": ts["score"].where(ts["verdict"].notna())}, index=ts.index)
+    m.index = pd.to_datetime(m.index).astype("datetime64[ns]")
+    return panel.merge(m, left_on="date", right_index=True, how="left")
 
 
 def _roll(g, window: int, how: str, min_periods: Optional[int] = None) -> pd.Series:
