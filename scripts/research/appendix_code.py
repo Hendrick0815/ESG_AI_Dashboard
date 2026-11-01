@@ -112,7 +112,7 @@ class _Ctx:
         """「表 E-3」；prefix 為空字串時為「表 3」（獨立文件用）。"""
         return f"{kind} {self.pre}-{n}" if self.pre else f"{kind} {n}"
 
-    def figure(self, name, title, width=15.9):
+    def figure(self, name, title, width=15.9, desc=None):
         f = self.dir / f"{name}.png"
         if not f.exists():
             self.R.note(f"（尚未產生截圖 {name}.png：請執行 python scripts/research/capture_pages.py）")
@@ -123,13 +123,22 @@ class _Ctx:
             self.R.image(part, width)
             suffix = f"（{i}/{len(parts)}）" if len(parts) > 1 else ""
             self.R.caption(f"{self.lab('圖', self.fig)}　{title}{suffix}")
+        if desc:
+            self.R.p(f"{self.lab('圖', self.fig)} {desc}")
 
-    def table(self, title, header, rows, widths, align=None, size=9):
+    def table(self, title, header, rows, widths, align=None, size=9, desc=None):
         self.tab += 1
         if not (SHOW_CODE or self.show_code):      # 不列程式碼時，拿掉表中「（程式 E-n）」的引用
             rows = [[re.sub(r"（[、]*）", "", str(c)) for c in r] for r in rows]
         self.R.caption(f"{self.lab('表', self.tab)}　{title}")
         self.R.table(header, rows, widths, align, size=size)
+        if desc:
+            self.R.p(f"{self.lab('表', self.tab)} {desc}")
+
+    def explain(self, kind, desc):
+        """為最近一張表或圖加上「說明」段落（這張圖表代表什麼、能看出什麼）。"""
+        n = self.tab if kind == "表" else self.fig
+        self.R.p(f"{self.lab(kind, n)} {desc}")
 
     def code(self, path, ranges, what, skip_notes=None):
         """ranges：[(a, b), ...]；兩段之間自動加「略」。回傳程式編號（供對照表引用）。
@@ -172,6 +181,8 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     P("各節以對照表列出每項功能所在的程式檔與行數範圍，並簡要說明其作用；行號於產生文件時由程式檔自動定位，與現行程式一致，"
       "完整程式碼請見 GitHub 上的對應檔案。截圖取自本機啟動的網站（與雲端網站為同一份程式），截圖時的資料日期以畫面上顯示者為準。")
     if standalone:
+        P("本文件依 2026 年 11 月 1 日的程式產生。專題論文的正式結果使用 2026-10-20 的資料截點與 10 月 25 日鎖定的設定；"
+          "資料截點之後的程式更新（持有期間預估改依大盤狀態、新增短期轉弱減碼選項、大盤狀態特徵開關）於相關章節另外標示，論文結果並未使用這些功能。")
         P("對照表之後列出該功能的關鍵程式碼：程式碼由程式檔直接讀取，左側數字為該檔案的實際行號；較長的函式只節錄與計算邏輯相關的部分，"
           "省略處以「第 a–b 行略」標示。對照表中的「程式 n」即指本文件中編號相同的程式碼清單。")
     P("閱讀時請注意兩項名稱與設定上的差異：")
@@ -189,6 +200,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
         X.fig += 1
         R.image(figure_fn(), 15.9)
         R.caption(f"{L('圖', X.fig)}　系統架構與資料流向")
+        X.explain("圖", "呈現平台之系統架構與資料流向。外部資料來源經資料層下載與整理後，交由運算層進行特徵計算、模型訓練與回測，再由介面層呈現於網站；研究層沿用相同之運算程式產生論文之正式結果；自動化流程則負責每日資料更新，以及程式修改後之測試與部署。")
     rows = []
     for group, fs in files:
         for f, desc, where in fs:
@@ -196,9 +208,11 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     X.table("程式檔案清單", ["程式檔", "行數", "分類", "主要功能", "對應的網站內容／論文位置"], rows,
             [3.8, 0.8, 1.8, 4.1, 3.3], "lrlll", size=8.5)
     Nn("註：行數為程式檔目前的總行數（含註解與空白行）。")
+    X.explain("表", "列示本文件涵蓋之全部程式檔及其行數與功能，並依網站頁面、介面元件、核心運算、資料層、論文研究、資料與自動化腳本及測試分類；最右欄為各程式對應之網站內容或論文章節。")
 
     X.table("網站頁面與程式對照", ["網站頁面", "頁面程式", "主要呼叫的模組與函式", "畫面內容"], PAGE_MAP,
             [1.8, 2.6, 4.6, 4.8], "llll", size=8.5)
+    X.explain("表", "彙整網站七個頁面之對應程式檔、主要呼叫之核心函式及畫面內容，各頁之詳細對照另見第三至九節。")
 
     # ---------------- 二、共用元件
     D(2, "二、各頁共用的設定與運算流程")
@@ -207,6 +221,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
       "get_result() 依序查詢記憶體、回測存檔（outputs/cache）與實際計算，同一組資料與參數只會計算一次；"
       "存檔的鍵值包含資料檔內容的雜湊值與參數，資料每日更新後會自動重新計算。")
     X.figure("home_sidebar", "側邊欄設定（資料來源與選股策略參數）", 15.9)
+    X.explain("圖", "呈現各頁共用之側邊欄設定區，上方為資料來源選擇，下方為 AI 模型、持股檔數、權重方式、ESG 比重，以及風險控制與短期轉弱減碼等選用功能之設定。各頁面共用同一組設定，任一設定變更均會重新執行回測。")
     s1 = fn("src/ui/common.py", "sidebar_strategy")
     s2 = fn("src/ui/common.py", "get_result")
     p1 = X.code("src/ui/common.py", [s1], "側邊欄策略參數 sidebar_strategy()")
@@ -219,16 +234,19 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     X.table("側邊欄與共用流程對照", ["畫面／功能", "程式位置", "說明"], [
         ["資料來源（真實資料／合成示範資料）", loc("src/ui/common.py", fn("src/ui/common.py", "sidebar_data")), "選擇資料來源並載入 Dataset；真實資料模式會先檢查是否需要補抓股價"],
         ["AI 模型、Top N、權重方式、ESG 比重、風險控制、進階設定", f"{loc('src/ui/common.py', s1)}（{p1}）", "回傳 Params；所有頁面共用同一組設定"],
+        ["短期轉弱減碼（2026 年 11 月新增，預設關閉）", loc("src/ui/common.py", rng("src/ui/common.py", 'pull_on = _keep("pull_on"', "反應比「跌破年線」快")) + "；" + loc("src/backtest.py", fn("src/backtest.py", "pullback_exposure")), "加權指數距 20 日高點跌逾 5% 時持股減半；可與風險控制同時使用，取較低的持股比例"],
         ["回測結果與進度條", f"{loc('src/ui/common.py', s2)}（{p2}）", "記憶體 → 存檔 → 計算；第一次計算時顯示訓練進度"],
         ["回測存檔", f"{loc('src/cache.py', k2, k1)}（{p3}）", "資料內容雜湊＋參數＋程式版本 → 存檔檔名"],
         ["雲端更新後的模組重新載入", f"{loc('src/_fresh.py', f1)}（{p4}）", "src 內任一程式檔更新即清除已載入模組"],
     ], [4.2, 4.6, 5.0], "lll")
+    X.explain("表", "對照側邊欄各項設定與各頁共用運算流程所在之程式位置；表中行數可直接對應程式檔，「程式 n」為本節所列之程式碼清單。")
 
     # ---------------- 三、首頁
     D(2, "三、首頁（app.py）")
     P("首頁顯示資料狀態、最新一次選股名單、三種策略與比較基準的績效指標卡，以及樣本外期間的累積淨值圖。"
       "最新選股以資料最後一天的收盤價計算，並標示最近一次與下一次的調倉日。")
     X.figure("home", "首頁")
+    X.explain("圖", "呈現網站首頁，由上而下依序為資料狀態、最新一次選股名單與調倉日、三個策略與加權指數之年化報酬指標，以及樣本外期間之累積淨值圖，可據以掌握各策略之最新持股與累積績效。")
     a = rng("app.py", "params = sidebar_strategy(ds)", "st.caption(HOLDINGS_NOTE)")
     b = rng("app.py", "st.plotly_chart(charts.nav_chart(res.returns", n=1)
     c = rng("app.py", 'with st.expander("📦 資料狀態與更新"', "st.caption(\"價格來源")
@@ -243,6 +261,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
         ["三種策略的持股名單", loc("src/ui/common.py", hb), "holdings_block() 顯示代號、名稱、權重與分數"],
         ["累積淨值圖", f"{loc('app.py', b)}；{loc('src/ui/charts.py', nv)}（{pb}）", "實線為策略、虛線為比較基準；扣除交易成本"],
     ], [4.4, 5.0, 4.4], "lll")
+    X.explain("表", "對照首頁各畫面區塊與其對應之程式檔、行數及功能。")
 
     # ---------------- 四、大盤趨勢
     D(2, "四、大盤趨勢頁（pages/0_大盤趨勢預測.py）")
@@ -250,6 +269,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
       "判斷只使用當天收盤為止的資料，美股與 VIX 使用前一晚已收盤的數值；本頁為描述性資訊，未用於選股與回測。"
       "頁面下方另提供未來一個月的波動與漲跌機率模型作為參考，其樣本外檢驗顯示漲跌方向的預測力接近隨機，因此判斷以指標表為主。")
     X.figure("trend", "大盤趨勢頁")
+    X.explain("圖", "呈現大盤趨勢頁。上方表格以 7 項指標判斷加權指數當前之多空狀態，各指標分別判定為多、中性或空；下方圖以底色標示歷史上各交易日依相同規則之判斷結果，可據以觀察市場狀態之轉換。本頁僅描述當前狀態，未用於選股。")
     ts = fn("src/market_trend.py", "trend_series")
     ct = fn("src/market_trend.py", "current_trend")
     pg = "pages/0_大盤趨勢預測.py"
@@ -264,42 +284,50 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
         ["加權指數與歷來趨勢判斷圖", f"{loc(pg, t2)}（{q2}）", "對數刻度；底色為當天的判斷"],
         ["未來 1 個月展望（參考）", loc("src/market_trend.py", fn("src/market_trend.py", "run")), "羅吉斯迴歸滾動訓練，2008 年起樣本外 AUC 與 Brier 分數"],
     ], [3.8, 4.6, 5.4], "lll")
+    X.explain("表", "對照大盤趨勢頁之判斷表、歷史趨勢圖與展望模型所在之程式位置，並說明 7 項指標之判斷規則。")
 
     # ---------------- 五、策略回測
     D(2, "五、策略回測頁（pages/1_策略回測.py）")
     pg = "pages/1_策略回測.py"
     P("本頁有四個分頁：「績效比較」可選擇期間比較累積淨值、績效指標、風險報酬散佈與回撤；「歷次持股」列出每個調倉日三種策略的持股，"
-      "並以調倉日當天的模型預估對照持有期間的實際走勢；「換股與成本」列出每次調倉的週轉率與交易成本；「方法說明」以文字說明預測目標、"
+      "並以調倉日當天的模型預估對照持有期間的實際走勢（2026 年 11 月起，預估的大盤部分改依調倉日的大盤狀態估計，並顯示期末虧損機率）；「換股與成本」列出每次調倉的週轉率與交易成本；「方法說明」以文字說明預測目標、"
       "特徵、訓練方式與回測規則。")
     X.figure("backtest_perf", "策略回測頁：績效比較")
+    X.explain("圖", "呈現策略回測頁之績效比較分頁，包括各策略與比較基準之累積淨值、績效指標、風險報酬散佈與回撤，並可選擇不同評估期間，據以比較各策略之報酬、波動與最大跌幅。")
     t1 = rng(pg, "with tab1:", "c2.plotly_chart(charts.drawdown_chart")
     r1 = X.code(pg, [t1], "績效比較分頁（期間選擇、淨值圖、績效表）")
     pf, cp, pt = fn("src/metrics.py", "performance"), fn("src/metrics.py", "capm"), fn("src/metrics.py", "performance_table")
     r2 = X.code("src/metrics.py", [pf, cp], "績效指標 performance() 與 CAPM capm()")
     X.figure("backtest_holdings", "策略回測頁：歷次持股與持有期間預估")
-    t2 = rng(pg, "# 先算三個策略的預估", "fcs[strat] = forecast.holding_forecast")
-    t2 = (t2[0], t2[1] + 1)
-    r3 = X.code(pg, [t2], "歷次持股：三種策略的持有期間預估")
+    X.explain("圖", "呈現策略回測頁之歷次持股分頁。上方列示調倉日與最新交易日之大盤狀態及歷史上漲機率；中段為三個策略於該調倉日之持股；下方走勢圖比較調倉日之預估（虛線與色帶）與實際走勢（實線），指標卡列示預估期末報酬、期末虧損機率與實際報酬，可據以檢驗模型預估與實際結果之差異。")
+    t2 = rng(pg, "# 先算三個策略的預估", "不代表模型能預測方向")
+    r3 = X.code(pg, [t2], "歷次持股：三種策略的持有期間預估與大盤狀態")
     hf = fn("src/forecast.py", "holding_forecast")
-    r4 = X.code("src/forecast.py", [hf], "持有期間預估路徑與區間 holding_forecast()")
+    r4 = X.code("src/forecast.py", [hf], "持有期間預估路徑、區間與期末虧損機率 holding_forecast()")
+    mv, sb = fn("src/forecast.py", "market_view"), fn("src/forecast.py", "strategy_beta")
+    r4b = X.code("src/forecast.py", [mv, sb], "依大盤狀態的預期大盤報酬 market_view() 與策略 Beta strategy_beta()")
     X.figure("backtest_trades", "策略回測頁：換股與成本")
+    X.explain("圖", "呈現策略回測頁之換股與成本分頁。上表彙整各策略之換股次數、平均週轉率與累計交易成本，下表列示各次調倉之週轉率與成本；由圖可知，AI 策略之換股頻率與交易成本明顯高於規則式 ESG 篩選。")
     t4 = rng(pg, "with tab4:", "st.dataframe(res.trades.sort_values")
     t4 = (t4[0], t4[1] + 2)
     r5 = X.code(pg, [t4], "換股與成本分頁")
     tc = fn("src/backtest.py", "trading_cost")
     r6 = X.code("src/backtest.py", [tc], "交易成本 trading_cost()")
     X.figure("backtest_method", "策略回測頁：方法說明")
+    X.explain("圖", "呈現策略回測頁之方法說明分頁，以文字說明預測目標、特徵、訓練方式、三種策略、回測規則與研究限制，其參數依側邊欄當前設定自動帶入。")
     t5 = rng(pg, "with tab5:", '""")')
     X.table("策略回測頁畫面與程式對照", ["畫面區塊", "程式位置", "說明"], [
         ["期間選擇、累積淨值（可切換對數刻度）", f"{loc(pg, t1)}（{r1}）", "全部樣本外期間或近 1／3／5 年、自訂區間"],
         ["績效表（年化報酬、波動、Sharpe、最大回撤、Beta、詹森 Alpha）", f"{loc('src/metrics.py', pt, pf, cp)}（{r2}）", "幾何年化；CAPM 以加權指數為市場"],
         ["風險報酬散佈、回撤圖", loc("src/ui/charts.py", fn("src/ui/charts.py", "risk_return_scatter"), fn("src/ui/charts.py", "drawdown_chart")), "Plotly 圖，顏色固定對應策略"],
         ["歷次持股（調倉日選單、三策略持股）", loc(pg, rng(pg, "with tab2:", "info = stock_info(res, ds, d)")), "調倉日每 2 週一次，遇假日順延"],
-        ["持有期間走勢圖與預估指標卡", f"{loc(pg, (t2[0], find(pg, 'st.plotly_chart(charts.forecast_compare')))}（{r3}）；{loc('src/forecast.py', hf)}（{r4}）", "預估 = 大盤長期平均＋持股 AI 預測超額；區間依過去 60 日波動"],
+        ["持有期間走勢圖與預估指標卡", f"{loc(pg, (t2[0], find(pg, 'st.plotly_chart(charts.forecast_compare')))}（{r3}）；{loc('src/forecast.py', hf)}（{r4}）", "預估 = 策略 Beta × 依大盤狀態的預期大盤報酬＋持股 AI 預測超額；區間依過去 60 日波動；另顯示期末虧損機率"],
+        ["大盤狀態與歷史上漲機率（預估上方的說明）", f"{loc('src/forecast.py', mv, sb)}（{r4b}）", "7 項趨勢指標判斷狀態（牛市回檔另外標示）；取過去同狀態之後 10 個交易日的平均報酬並向全期平均收縮；只用調倉日以前已實現的資料"],
         ["期末報酬預估比較", loc("src/ui/charts.py", fn("src/ui/charts.py", "forecast_compare")), "圓圈＝預估、粗線＝68% 區間、菱形＝實際"],
         ["換股次數、週轉率、累計成本", f"{loc(pg, t4)}（{r5}）；{loc('src/backtest.py', tc)}（{r6}）", "買進手續費 0.1425%；賣出手續費＋證交稅 0.3%"],
         ["方法說明（文字）", loc(pg, t5), "依目前設定動態帶入參數"],
     ], [4.2, 5.4, 4.2], "lll")
+    X.explain("表", "對照策略回測頁四個分頁之畫面區塊與程式位置；其中持有期間預估與大盤狀態二列為 2026 年 11 月更新後之做法。")
 
     # ---------------- 六、個股分析
     D(2, "六、個股分析頁（pages/2_個股分析.py）")
@@ -307,9 +335,13 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     P("本頁可輸入任一股票代號；不在資料中的股票會即時向 Yahoo Finance 下載。頁面上方為累積報酬、年化波動、Sharpe、最大回撤與 ESG 評等，"
       "下方分為走勢、風險與技術指標、ESG、同業比較四個分頁。ESG 評等取「期間結束時已公告」的最新一期，不使用之後才公告的資料。")
     X.figure("stock_price", "個股分析頁：走勢（以 2330 台積電為例）")
+    X.explain("圖", "呈現個股分析頁之走勢分頁。上方指標列示個股於選定期間之累積報酬、年化波動、夏普值、最大回撤與 ESG 評等，下方為股價與均線走勢，以及依固定門檻自動產生之走勢摘要。")
     X.figure("stock_risk", "個股分析頁：風險與技術指標")
+    X.explain("圖", "呈現個股分析頁之風險與技術指標分頁。左圖為 20 日年化波動率之變化，右圖為日報酬分布，下表說明各風險指標之意義，可據以判斷個股之波動程度與極端報酬之頻率。")
     X.figure("stock_esg", "個股分析頁：ESG")
+    X.explain("圖", "呈現個股分析頁之 ESG 分頁。左側雷達圖呈現 E、S、G 三構面分數，右表列示 TESG 總分、等級、爭議相關分數與公告日，下方為歷次評等之變化；所呈現者僅限期間結束時已公告之評等。")
     X.figure("stock_peer", "個股分析頁：同業比較")
+    X.explain("圖", "呈現個股分析頁之同業比較分頁。上表比較同產業股票之 ESG 總分、報酬、波動、夏普值與最大回撤，下方散佈圖呈現 ESG 總分與累積報酬之關係，可據以觀察該股於同業中之相對位置。")
     a = rng(pg, 'd = px_df.copy()', "esg_row = (e_known")
     b = rng(pg, "for t in dict.fromkeys([ticker, *peers]):", '"Sharpe": pm["sharpe"], "最大回撤": pm["max_drawdown"]})')
     s1 = X.code(pg, [a], "技術指標與已公告的 ESG 評等")
@@ -322,6 +354,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
         ["ESG（雷達圖、評等明細、歷史）", loc(pg, rng(pg, "with tab3:", "目前只有一期 ESG 評等")), "TEJ TESG 總分與 E／S／G、爭議分數、公告日"],
         ["同業比較", f"{loc(pg, b)}（{s2}）", "同產業至少 3 檔時比較同產業，否則比較全部股票"],
     ], [4.2, 5.2, 4.4], "lll")
+    X.explain("表", "對照個股分析頁之代號輸入、指標與四個分頁所在之程式位置。")
 
     # ---------------- 七、模型解釋
     D(2, "七、模型解釋頁（pages/3_模型解釋.py）")
@@ -329,6 +362,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     P("本頁說明 AI 模型的表現與使用的特徵：上方為平均 Rank IC、IC 為正的比例與 Top N 每期平均超額報酬；"
       "左圖為最後一次訓練的特徵重要性，右圖為每次調倉的 Rank IC；下方可展開 SHAP 分析、特徵清單與每次訓練的紀錄。")
     X.figure("model", "模型解釋頁")
+    X.explain("圖", "呈現模型解釋頁。上方指標列示平均 Rank IC、IC 為正之比例與前 N 檔平均超額報酬；左圖為最近一次訓練之特徵重要性，右圖為各調倉日之 Rank IC，可據以觀察模型所依賴之特徵及其排序能力之穩定性。")
     a = rng(pg, "ic = rank_ic(res.evaluation)", "metric_cards(cards, min_width=190)")
     m1 = X.code(pg, [a], "Rank IC 與 Top N 超額報酬")
     ri = fn("src/pipeline.py", "rank_ic")
@@ -341,6 +375,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
         ["使用的特徵", loc(pg, rng(pg, 'with st.expander("使用的特徵")', "ESG 資料涵蓋率")), "技術面、見頂訊號、估值；ESG 不進入模型，於選股時融合"],
         ["訓練紀錄", loc(pg, rng(pg, 'with st.expander("訓練紀錄")', 'st.caption("最新的模型排在最上面。")')), "每次訓練的資料期間、樣本數與負責期間的表現"],
     ], [4.2, 5.4, 4.2], "lll")
+    X.explain("表", "對照模型解釋頁之 Rank IC、特徵重要性、SHAP 分析與訓練紀錄所在之程式位置。")
 
     # ---------------- 八、產業與籌碼
     D(2, "八、產業與籌碼頁（pages/4_產業與籌碼.py）")
@@ -348,7 +383,9 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     P("本頁提供產業趨勢與三大法人買賣超資訊，僅供參考，不影響選股與回測。產業指數為股票池內同產業股票的等權平均；"
       "法人資料取自證交所 T86 報表（僅涵蓋上市股票）。")
     X.figure("industry", "產業與籌碼頁：產業趨勢")
+    X.explain("圖", "呈現產業與籌碼頁之產業趨勢分頁。上方指標列示趨勢向上之產業數及近 1 個月表現最強與最弱之產業，長條圖與下表列示各產業之近期報酬與季線乖離；本頁僅供參考，未用於選股。")
     X.figure("flows", "產業與籌碼頁：主力動向（三大法人）")
+    X.explain("圖", "呈現產業與籌碼頁之主力動向分頁。上圖依產業彙整三大法人之買賣超金額，下方表格列示買超與賣超金額前 15 名及投信買超前 10 名，可據以觀察近期法人資金之流向。")
     it, fl, fb = fn("src/analysis.py", "industry_trend"), fn("src/analysis.py", "flow_leaders"), fn("src/analysis.py", "flow_by_industry")
     n1 = X.code("src/analysis.py", [it], "產業趨勢 industry_trend()")
     n2 = X.code("src/analysis.py", [fl], "三大法人買賣超彙整 flow_leaders()")
@@ -358,6 +395,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
         ["法人買賣超金額（依產業）", f"{loc('src/analysis.py', fb)}", "估計金額 = 買超股數 × 最新收盤價"],
         ["買超、賣超前 15 名與投信買超前 10 名", loc(pg, rng(pg, "with tab2:", "st.caption(\"資料來源：證交所 T86")) + f"；{loc('src/analysis.py', fl)}（{n2}）", "可選近 1／5／20 個交易日"],
     ], [4.2, 5.4, 4.2], "lll")
+    X.explain("表", "對照產業趨勢與三大法人買賣超各畫面區塊所在之程式位置及計算方式。")
 
     # ---------------- 九、論文正式版本
     D(2, "九、論文正式版本頁（pages/5_論文正式版本.py）")
@@ -366,6 +404,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
       "頁面讀取後以與論文相同的格式（深藍表頭、隔列淺底）顯示；論文中的表 3-3、3-4、3-8 與表 4-1 至 4-14（表 4-10 除外）"
       "即為本頁的截圖（由 capture_web.py 擷取）。因此網站與論文的數字出自同一份輸出檔，不會不一致。")
     X.figure("thesis", "論文正式版本頁（樣本與期間分頁）")
+    X.explain("圖", "呈現論文正式版本頁，內容為論文第三、四章之正式表格與圖，上方指標列示各投組與 ETF 之年化報酬、夏普值與最大回撤；論文中之表格即為本頁之截圖，故網站與論文之數據一致。")
     th, sh = fn(pg, "table_html"), fn(pg, "show_table")
     tb = rng(pg, "NAMES = [", "with st.expander(\"下載與重現方式\")")
     tb = (tb[0], tb[1] - 2)
@@ -377,6 +416,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
         ["下載與重現方式", loc(pg, rng(pg, 'with st.expander("下載與重現方式")', 'key=f"dl-{name}")')), "提供逐期股票池、持股、報酬與 manifest 下載"],
         ["論文表格截圖", loc("scripts/research/capture_web.py", fn("scripts/research/capture_web.py", "main")), "以 ?all=1 依序展開全部表格後逐一截圖"],
     ], [4.2, 5.4, 4.2], "lll")
+    X.explain("表", "對照論文正式版本頁各畫面區塊所在之程式位置，以及論文表格截圖之產生方式。")
 
     # ---------------- 十、核心引擎
     D(2, "十、選股與回測核心程式（網站與論文共用）")
@@ -403,17 +443,21 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     pk, mw = fn("src/backtest.py", "pick_top"), fn("src/backtest.py", "make_weights")
     sm_ = fn("src/backtest.py", "simulate")
     e7 = X.code("src/backtest.py", [sm_], "每日淨值模擬 simulate()")
+    pe, ce = fn("src/backtest.py", "pullback_exposure"), fn("src/backtest.py", "combine_exposure")
+    e8 = X.code("src/backtest.py", [pe, ce], "短期轉弱減碼 pullback_exposure()、combine_exposure()（2026 年 11 月新增）")
     X.table("核心程式與論文研究方法對照", ["步驟", "程式位置", "論文對應"], [
         ["整體流程", f"{loc('src/pipeline.py', pr)}（{e1}）", "圖 1-1 研究流程"],
         ["技術面特徵、見頂訊號、預測目標（未來 10 日報酬）", f"{loc('src/features.py', at)}（{e2}）", "第三章第二節、表 3-5"],
         ["ESG 與估值依公告日對齊", f"{loc('src/features.py', am)}（{e3}）", "表 3-2 可得日規則"],
         ["調倉日（論文：每 10 個交易日；網站：每 2 週）", f"{loc('src/backtest.py', rs_)}（{e4}）", "第三章第三節、表 3-9"],
-        ["Random Forest 滾動訓練（每 3 次調倉重訓、訓練樣本截至調倉日前 10 日）", f"{loc('src/models.py', wf)}（{e5}）", "第三章第四節"],
+        ["Random Forest 滾動訓練（每 3 次調倉重訓、訓練樣本截至調倉日前 10 日）", f"{loc('src/models.py', wf)}（{e5}）", "第三章第四節（一）（二）"],
         ["單純 AI、AI+ESG、規則式 ESG 篩選的分數", f"{loc('src/backtest.py', er, ss)}（{e6}）", "第三章第三、四節、表 3-6"],
         ["前 N 檔與權重", loc("src/backtest.py", pk, mw), "Top 20 等權"],
         ["每日淨值、週轉率與交易成本", f"{loc('src/backtest.py', sm_, tc)}（{e7}、{r6}）", "表 3-9 交易假設、表 4-12"],
         ["績效指標與 CAPM", f"{loc('src/metrics.py', pf, cp)}（{r2}）", "第三章第五節、表 4-1、表 4-4"],
-    ], [5.0, 5.2, 3.6], "lll")
+        ["短期轉弱減碼（選用，網站 2026 年 11 月新增）", f"{loc('src/backtest.py', pe, ce)}（{e8}）", "論文未使用（表 3-1：不使用風險控制）"],
+        ["大盤狀態特徵（設定開關，預設關閉）", loc("src/features.py", fn("src/features.py", "add_market_features")), "論文未使用；已測試、效果不一致"],
+    ], [5.0, 5.2, 3.6], "lll", desc="依執行順序列示選股與回測各步驟所在之程式位置及其對應之論文章節或表格，可據以由論文之方法說明追溯實際執行之程式；最後二列為資料截點後新增之選用功能，論文結果未使用。")
 
     # ---------------- 十一、資料更新與部署
     D(2, "十一、資料蒐集、自動更新與部署")
@@ -441,6 +485,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
         ["自動更新主程式", "—", f"{loc('src/store.py', au)}（{g1}）", "任一步驟失敗不影響其他步驟"],
         ["程式部署", "GitHub → Streamlit Cloud", f"{loc('scripts/auto_push.py', pu)}（{g4}）", "測試通過才推送"],
     ], [3.6, 2.4, 4.8, 3.0], "llll")
+    X.explain("表", "列示網站使用之各項資料、資料來源、下載程式位置與更新頻率，據以區分每日自動更新與需手動更新之資料。")
 
     # ---------------- 十二、論文研究程式
     D(2, "十二、論文研究程式與輸出檔")
@@ -479,6 +524,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
         ["圖 4-1 累積淨值", "strategy_returns.csv", "pipeline.run()；build_report.py figures()"],
         ["附錄 A 版本紀錄", "manifest.json", f"{rr} main()"],
     ], [3.6, 5.6, 4.6], "lll", size=8.5)
+    X.explain("表", "將論文之各表與各圖對應至其輸出檔與產生程式；檢查論文數據時，可據此追溯原始輸出檔與計算程式。")
 
     # ---------------- 十三、測試
     D(2, "十三、程式測試")
@@ -493,6 +539,8 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
          ("tests/test_core.py", "test_metrics_known_values", "績效指標與已知數值相符"),
          ("tests/test_core.py", "test_capm_alpha_beta", "CAPM Beta 與詹森 Alpha"),
          ("tests/test_core.py", "test_holding_forecast", "持有期間預估路徑"),
+         ("tests/test_core.py", "test_pullback_exposure_threshold_and_no_lookahead", "短期轉弱減碼的門檻正確、只用當天以前的收盤價"),
+         ("tests/test_core.py", "test_market_view_uses_only_past_and_follows_state", "大盤狀態預估只用已實現的資料；策略 Beta 計算正確"),
          ("tests/test_research.py", "test_eligibility_top_n_uses_past_window_only", "逐期股票池只用過去 20 日成交金額"),
          ("tests/test_research.py", "test_daily_returns_twse_and_tpex", "上市櫃日報酬（含權息）計算"),
          ("tests/test_research.py", "test_hac_and_holm", "HAC 標準誤與 Holm 調整"),
@@ -506,6 +554,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     n_core = sum(1 for l in lines_of("tests/test_core.py") if l.startswith("def test_"))
     n_res = sum(1 for l in lines_of("tests/test_research.py") if l.startswith("def test_"))
     X.table(f"主要測試項目（共 {n_core + n_res} 項，節錄）", ["測試函式", "程式位置", "檢查內容"], rows, [5.4, 4.4, 4.0], "lll", size=8.5)
+    X.explain("表", "節錄主要之自動化測試及其檢查內容，重點在於確認回測未使用未來資料，以及交易成本與績效計算之正確性；每次推送程式至 GitHub 前均會自動執行全部測試。")
     ft = fn("tests/test_core.py", "test_future_prices_do_not_change_past_decisions")
     X.code("tests/test_core.py", [ft], "前視偏差測試（範例）")
 
@@ -662,6 +711,7 @@ def appendix_e(R, shots_dir=None, note_fn=None, figure_fn=None):
         ["論文正式版本", pg("pages/5_論文正式版本.py"), "讀取 build_report.py 產生的 web_tables.json", "論文第三、四章的正式表格與圖"],
     ], [1.8, 3.4, 4.0, 4.6], "llll")
     Nn("註：所有頁面共用側邊欄設定（src/ui/common.py sidebar_strategy()）與回測存檔（src/cache.py），同一組資料與參數只計算一次。")
+    P(f"表 {LETTER}-1 對照網站七個頁面與其對應之程式檔及主要呼叫之核心函式。由表可知，各頁面僅負責呈現，選股、回測與績效計算皆集中於 src/ 目錄下之共用程式；論文正式版本頁則直接讀取論文產生程式所輸出之表格檔，故網站與論文之數據來源一致。")
 
     D(2, "二、核心程式")
     P("選股與回測由 pipeline.run() 串接，依序為：建立特徵 → 滾動訓練模型並預測 → 計算三種策略的分數 → 模擬每日淨值並扣除交易成本 → 計算績效。"
@@ -684,6 +734,7 @@ def appendix_e(R, shots_dir=None, note_fn=None, figure_fn=None):
          "Newey-West 標準誤、CAPM、差異檢定、Holm 調整、區塊 bootstrap 信賴區間"],
         ["論文正式結果", F("scripts/research/run_research.py", "main"), "依 research_config.json 重跑回測，輸出第四章各表與 manifest.json"],
     ], [3.0, 5.0, 5.8], "lll")
+    P(f"表 {LETTER}-2 依執行順序列示選股與回測各步驟所在之程式檔、行數及其功能。前九列為網站與論文共用之流程，後三列為論文專用之逐期股票池、統計檢定與正式結果產生程式；如需檢查特定步驟之計算，可依表列行數查閱對應程式。")
 
     D(2, "三、資料更新、部署與測試")
     B([f"**每日資料更新：**GitHub Actions（.github/workflows/daily_update.yml）於交易日 14:50 執行 scripts/update_data.py --auto，"
@@ -691,4 +742,7 @@ def appendix_e(R, shots_dir=None, note_fn=None, figure_fn=None):
        f"**程式部署：**本機 scripts/auto_push.py（{F('scripts/auto_push.py', 'publish')}）在程式修改後先執行測試，通過才推送到 GitHub。",
        f"**測試：**tests/ 內共 {sum(1 for l in lines_of('tests/test_core.py') + lines_of('tests/test_research.py') if l.startswith('def test_'))} 項自動化測試，"
        "重點檢查不使用未來資料（例如加入未來股價不會改變過去的選股）、交易成本與績效計算正確。",
-       "**論文產生：**scripts/research/build_report.py 讀取 run_research.py 的輸出檔產生本論文，文中數字皆由輸出檔讀取，不手動輸入。"])
+       "**論文產生：**scripts/research/build_report.py 讀取 run_research.py 的輸出檔產生本論文，文中數字皆由輸出檔讀取，不手動輸入。",
+       f"**資料截點後的網站更新（2026 年 11 月）：**網站「策略回測」頁的持有期間預估改為依調倉日的大盤狀態估計大盤報酬，並顯示期末虧損機率"
+       f"（{F('src/forecast.py', 'market_view')}）；側邊欄新增選用的「短期轉弱減碼」（{F('src/backtest.py', 'pullback_exposure')}，預設關閉）；"
+       "另提供把大盤狀態加入模型特徵的設定開關（src/config.py USE_MARKET_FEATURES，預設關閉）。本論文的結果仍以 2026-10-20 資料截點與鎖定設定為準，未使用這些功能。"])
