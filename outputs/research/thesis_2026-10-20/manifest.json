@@ -1,14 +1,13 @@
 {
   "run_id": "thesis_2026-10-20",
-  "started": "2026-10-27T17:45:23",
-  "finished": "2026-10-27T18:01:10",
-  "git_commit": null,
+  "started": "2026-11-01T21:22:03",
+  "finished": "2026-11-01T21:39:18",
+  "git_commit": "25952d01b5902b9856af1bee311510a2e6e58402",
   "data_snapshot": "5c2c22c",
   "config": {
     "run_id": "thesis_2026-10-20",
-    "description": "論文正式版本：資料截點 2026-10-20，逐期股票池（含下市股票），參數於 2026-10-25 鎖定",
+    "description": "論文正式版本：資料截點 2026-10-20，逐期股票池（含下市股票），設定與網站現行程式一致（每 2 週調倉）",
     "data_cutoff": "2026-10-20",
-    "locked_on": "2026-10-25",
     "history_start": "2017-08-01",
     "backtest_start": "2022-11-01",
     "long_backtest_start": "2019-01-02",
@@ -26,6 +25,8 @@
     "retrain_every_rebalances": 3,
     "train_sample_every_days": 5,
     "hold_days": 10,
+    "rebalance_mode": "calendar",
+    "rebalance_weeks": 2,
     "top_n": 20,
     "weighting": "等權",
     "esg_weight": 0.3,
@@ -69,14 +70,10 @@
       "exploratory_evaluation": [
         "2022-11-01",
         "2026-10-20"
-      ],
-      "locked_holdout": [
-        "2026-10-21",
-        null
       ]
     }
   },
-  "python": "3.13.15",
+  "python": "3.13.18",
   "packages": {
     "pandas": "3.0.5",
     "numpy": "2.5.3",
@@ -91,32 +88,32 @@
     "data/processed/benchmarks.csv": "7a6c350e05d223a64f4d576991bbf972adc2377f723c536ea6a7454d29010db3",
     "data/processed/valuation.csv": "08eaedc20be61fb947160354528bf4faa69ae8b7fb748a722a928ca143d51186",
     "data/processed/listing.csv": "93c54ba44c36667338ed56a8ef21b3af0e4f911450841d24090a996737aa180c",
-    "data/raw/daily_quotes*（合計 2491 檔）": "1a8450c9837a40f0017ea4284cee9b0aec3e3955ee878425537a81aa89de602d",
-    "data/raw/yahoo_all/（合計 1087 檔）": "b5910c94b31762542434c1133c988aa7ef0f0612d285081ae384a9e9fff47a08",
-    "data/raw/finmind_twse/（合計 121 檔）": "3505ac9126ee3ed9daa4861db541ef255eb0675d4cf4015960ad295d4ed37ce8",
+    "data/raw/daily_quotes*（合計 2427 檔）": "7f5a171b8901b2d3b41b8dacfcb8ada31bb2001a609f607cca43b3fb79019413",
+    "data/raw/yahoo_all/（合計 1087 檔）": "f9eb633b12f72f060f825aa2f66b4cbf399c51e813c4e2ba6964f5802be13e54",
+    "data/raw/finmind_twse/（合計 55 檔）": "fe9106636c4d304dbb948d55dbc90c0e316335d34b25faf30bedbc7373692df8",
     "data/raw/twse_codes.csv": "95c48446f4600781df8b517526e00776286176aff8570db96eff1608a0cfa3e8",
     "data/raw/yahoo_all/missing.txt": "5b68f7642be2cf78837867d295a0013ad10f867c93d4b33d12a332557cd591cf",
-    "docs/parameter_trials.csv": "a7b6b668315ce66da9f33b04152304c6455327ba56c774fbc4b866c6edf32a16"
+    "docs/parameter_trials.csv": "fa3a4973fd21e759f12122bf843e3dce4f4e23ab4790af4cd8f9a7c942ab68d8"
   },
   "code_sha256": {
     "src/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "src/_fresh.py": "e64d4aec25cfad3621c3ddfae9a252dfc3fa3f4b4f55fce34ed11813543f2080",
     "src/analysis.py": "e6390681960350d5b71ab79662e46d66805a4fb2a036e5a288852dacb681e493",
-    "src/backtest.py": "8a84129b8ff7b55602d42c0ca5e0f850be5f81a24285201e52b3add9443f4cfc",
-    "src/cache.py": "f41798930ae2c1e8e72e7be61aed4ba2e1b0b225d40862c6e94c838f8f65cef0",
-    "src/config.py": "a56bbb0f20dd9f99c00cfa8fcd1a6cd87ca4d0f7585602e3cba67d981867c27f",
+    "src/backtest.py": "13a044b97d4436249a62b1cd801e0628a8c8c59b6baab68770bbe69b4b980787",
+    "src/cache.py": "6057ac4a74976e1d2724cbb0c5e8f97525f91754a3e7097c9962e1eefab86f36",
+    "src/config.py": "863d192bf689061b735d07fdff835e7022e3f1c765b68fb0e7524b8fea0398a3",
     "src/crawlers/__init__.py": "80a4cdf0adac39ce834f9b1dd09f898673ccb9de92db0bdc6a92c34d89fd684f",
     "src/crawlers/twse.py": "8554e4128e821a4f82882018d8d0aea389997575f8d37c5b859c6ca6a50550ee",
     "src/crawlers/yahoo.py": "e3f5f0857cf5aa7a89bbd396b2c2507b048abbbc920302108fd3f1a601aa40ca",
-    "src/features.py": "1d71d6fecdeced93804e5be1a8bf420eda31e14aae878bf134df4cc344c2d9d9",
-    "src/forecast.py": "2bc9718ab7d434f9ce26cdfe952e271c4c2b963331fc108409b6160fe0133d92",
+    "src/features.py": "e7b873fe3ed65aa8b69e5ae10db3c3fbed2494f4dbf4b2000690535f2f91bbb1",
+    "src/forecast.py": "02586f40c73867560f8ad1cec88c3a2b34cc24ca6da698bd3adb08b5d30ec572",
     "src/loaders/__init__.py": "5c65c2f7e3daf8e6d17c66fc490dbb604fa50bdc1ac0a47e659ae06d6359e257",
     "src/loaders/local.py": "5973951b10991b421c552e64248561cde1cc68e6c78e77efa92da0b646e9f8dd",
     "src/loaders/tej.py": "4df0c9bd6a8b760d8aaf086eebff6dd8f15a787d517a22be7659e42bd445eeda",
     "src/market_trend.py": "5b9c1ca1c5242d69514fe7bb07e42c91dd7f51b27a01c1597aa9786d623e0d6b",
     "src/metrics.py": "5a384bacf83bcf738eccb31a046a7627fc2901a7d59720481ab5f6cf57a77e2d",
-    "src/models.py": "0860a730d4a1c6add2ee27cdef063257dfab9a513d3394d4a6e70671a322b7b4",
-    "src/pipeline.py": "8c140c5f4fede5f6856d7dc9d23d621486b7d2036f31646c4fa571ad2cd1922d",
+    "src/models.py": "6c254a2d73435579064bd0cc111cb260704510308fa72e80e9bfd07dc3cb536c",
+    "src/pipeline.py": "e5aa6dd33f42ca5eae06297c84e9fd47cd1094effc05c38d31570e30efaca808",
     "src/research/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "src/research/analysis.py": "4abca4784345d55885ab4c7ba0bbab2115144f6fb742366f6990dd41f6a6f246",
     "src/research/exchange.py": "1dbe2f8cda420e16cbed09755687babfaf1149b4cf9a9c52e36f3c5045d14557",
@@ -124,19 +121,19 @@
     "src/store.py": "d88a96be7f2facfb98bbcb8f271fcfb14d5691ca38f36128aa4b21a9029ee050",
     "src/ui/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "src/ui/charts.py": "3229d3a05841a4a92d787a393e5ad3c290a1e04d82cfa8da3b77b14065851644",
-    "src/ui/common.py": "daa55df4a7b6940d3e460d090be811240bdc7b785676d2ef715147e4f8dca825",
+    "src/ui/common.py": "fadc54df42fe39aec98690242c8b2ab5666273a96a946b14d7c5af568f82db69",
     "src/utils.py": "5feb1ab4f9d07c4207ed6ab5a88d673d2c155b7a25334e5e64a2669800f7dcdb",
-    "scripts/research/run_research.py": "f822a999a85ec8fdf943521ecb6df486c72ea9cefb0b35cbf4ec5d716daba50d",
+    "scripts/research/run_research.py": "134fe3bda40c2d4849629531c12f4387d22f84d3ab8e113a6f2fea87ebe4d51b",
     "scripts/research/check_twse_coverage.py": "e7ba4333272bc4da800f9ce7cba5495c8e3f078c4b4ba196ba16de5e021e392d",
     "scripts/backfill_daily_quotes.py": "2c228fbeaa9df0814a74d62642f1df3f025ebb73db89b9d3a48c8aeeefbb4ea4",
     "scripts/fetch_yahoo_all.py": "59797caf4077fb4aa999f0db55ebc4c9f6cbe67696b2fce3973970db283e9586",
     "scripts/fetch_finmind_twse.py": "1ab45779b2fc138cac00df2725fe518f6705f08c54d1769c1e4ec3db3e7c689c"
   },
   "summary": {
-    "rebalances": 96,
+    "rebalances": 104,
     "first_rebalance": "2022-11-01",
-    "last_rebalance": "2026-10-06",
-    "trainings": 33,
+    "last_rebalance": "2026-10-13",
+    "trainings": 35,
     "universe_tickers_ever": 1357
   }
 }

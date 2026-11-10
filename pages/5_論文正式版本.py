@@ -34,7 +34,7 @@ if not TABLES.exists():
 
 tables = {t["key"]: t for t in json.loads(TABLES.read_text(encoding="utf-8"))}
 st.caption(f"研究版本 {CFG['run_id']}｜資料截點 {CFG['data_cutoff']}｜評估期 {CFG['periods']['exploratory_evaluation'][0]} ～ "
-           f"{CFG['periods']['exploratory_evaluation'][1]}（探索性）｜保留測試自 {CFG['periods']['locked_holdout'][0]} 起")
+           f"{CFG['periods']['exploratory_evaluation'][1]}（探索性）｜每 {CFG.get('rebalance_weeks', 2)} 週調倉")
 st.info("本頁是論文使用的正式結果：每個調倉日以「當時」成交金額前 300 大重建股票池，並保留之後下市的股票；"
         "設定固定在 research_config.json。其他頁面以「目前」前 300 大回測，報酬會因後見之明偏誤而偏高，兩者數字不同。")
 

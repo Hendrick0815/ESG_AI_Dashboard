@@ -181,7 +181,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     P("各節以對照表列出每項功能所在的程式檔與行數範圍，並簡要說明其作用；行號於產生文件時由程式檔自動定位，與現行程式一致，"
       "完整程式碼請見 GitHub 上的對應檔案。截圖取自本機啟動的網站（與雲端網站為同一份程式），截圖時的資料日期以畫面上顯示者為準。")
     if standalone:
-        P("本文件依 2026 年 11 月 1 日的程式產生。專題論文的正式結果使用 2026-10-20 的資料截點與 10 月 25 日鎖定的設定；"
+        P("本文件依 2026 年 11 月 1 日的程式產生。專題論文的正式結果使用 2026-10-20 的資料截點，研究設定與網站現行程式一致（每 2 週調倉）；"
           "資料截點之後的程式更新（持有期間預估改依大盤狀態、新增短期轉弱減碼選項、大盤狀態特徵開關）於相關章節另外標示，論文結果並未使用這些功能。")
         P("對照表之後列出該功能的關鍵程式碼：程式碼由程式檔直接讀取，左側數字為該檔案的實際行號；較長的函式只節錄與計算邏輯相關的部分，"
           "省略處以「第 a–b 行略」標示。對照表中的「程式 n」即指本文件中編號相同的程式碼清單。")
@@ -449,7 +449,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
         ["整體流程", f"{loc('src/pipeline.py', pr)}（{e1}）", "圖 1-1 研究流程"],
         ["技術面特徵、見頂訊號、預測目標（未來 10 日報酬）", f"{loc('src/features.py', at)}（{e2}）", "第三章第二節、表 3-5"],
         ["ESG 與估值依公告日對齊", f"{loc('src/features.py', am)}（{e3}）", "表 3-2 可得日規則"],
-        ["調倉日（論文：每 10 個交易日；網站：每 2 週）", f"{loc('src/backtest.py', rs_)}（{e4}）", "第三章第三節、表 3-9"],
+        ["調倉日（論文與網站皆為每 2 週固定同一星期幾）", f"{loc('src/backtest.py', rs_)}（{e4}）", "第三章第三節、表 3-9"],
         ["Random Forest 滾動訓練（每 3 次調倉重訓、訓練樣本截至調倉日前 10 日）", f"{loc('src/models.py', wf)}（{e5}）", "第三章第四節（一）（二）"],
         ["單純 AI、AI+ESG、規則式 ESG 篩選的分數", f"{loc('src/backtest.py', er, ss)}（{e6}）", "第三章第三、四節、表 3-6"],
         ["前 N 檔與權重", loc("src/backtest.py", pk, mw), "Top 20 等權"],
@@ -721,7 +721,7 @@ def appendix_e(R, shots_dir=None, note_fn=None, figure_fn=None):
         ["整體流程", F("src/pipeline.py", "run"), "串接資料、特徵、模型、選股與回測；網站與論文共用"],
         ["特徵與預測目標", F("src/features.py", "add_technical"), "動能、波動、均線乖離與見頂訊號等技術特徵；預測目標為未來 10 個交易日報酬"],
         ["ESG 與估值對齊", F("src/features.py", "asof_merge"), "每天只使用公告日以前已公告的 TESG 與估值，避免前視偏差"],
-        ["調倉日", F("src/backtest.py", "rebalance_schedule"), "論文每 10 個交易日調倉；網站每 2 週同一天調倉"],
+        ["調倉日", F("src/backtest.py", "rebalance_schedule"), "論文與網站皆每 2 週於同一星期幾調倉，遇休市順延"],
         ["AI 模型訓練與預測", F("src/models.py", "walk_forward"), "Random Forest 滾動式訓練，每 3 次調倉重訓；訓練樣本只到調倉日前 10 個交易日，預測相對報酬"],
         ["三種策略的選股分數", loc("src/backtest.py", fn("src/backtest.py", "apply_esg_rules"), fn("src/backtest.py", "score_strategies")),
          "單純 AI：模型分數；AI+ESG：排除爭議與 EPS 為負後，70% AI 排名＋30% ESG 排名；規則式 ESG：TESG 總分"],
@@ -745,4 +745,4 @@ def appendix_e(R, shots_dir=None, note_fn=None, figure_fn=None):
        "**論文產生：**scripts/research/build_report.py 讀取 run_research.py 的輸出檔產生本論文，文中數字皆由輸出檔讀取，不手動輸入。",
        f"**資料截點後的網站更新（2026 年 11 月）：**網站「策略回測」頁的持有期間預估改為依調倉日的大盤狀態估計大盤報酬，並顯示期末虧損機率"
        f"（{F('src/forecast.py', 'market_view')}）；側邊欄新增選用的「短期轉弱減碼」（{F('src/backtest.py', 'pullback_exposure')}，預設關閉）；"
-       "另提供把大盤狀態加入模型特徵的設定開關（src/config.py USE_MARKET_FEATURES，預設關閉）。本論文的結果仍以 2026-10-20 資料截點與鎖定設定為準，未使用這些功能。"])
+       "另提供把大盤狀態加入模型特徵的設定開關（src/config.py USE_MARKET_FEATURES，預設關閉）。本論文的結果以 2026-10-20 資料截點與表 3-1 之設定為準，未使用這些選用功能。"])

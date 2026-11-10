@@ -1,8 +1,7 @@
 {
   "run_id": "thesis_2026-10-20",
-  "description": "論文正式版本：資料截點 2026-10-20，逐期股票池（含下市股票），參數於 2026-10-25 鎖定",
+  "description": "論文正式版本：資料截點 2026-10-20，逐期股票池（含下市股票），設定與網站現行程式一致（每 2 週調倉）",
   "data_cutoff": "2026-10-20",
-  "locked_on": "2026-10-25",
   "history_start": "2017-08-01",
   "backtest_start": "2022-11-01",
   "long_backtest_start": "2019-01-02",
@@ -20,6 +19,8 @@
   "retrain_every_rebalances": 3,
   "train_sample_every_days": 5,
   "hold_days": 10,
+  "rebalance_mode": "calendar",
+  "rebalance_weeks": 2,
   "top_n": 20,
   "weighting": "等權",
   "esg_weight": 0.3,
@@ -40,7 +41,6 @@
   "periods": {
     "development": ["2017-08-01", "2020-12-31"],
     "validation": ["2021-01-01", "2022-10-31"],
-    "exploratory_evaluation": ["2022-11-01", "2026-10-20"],
-    "locked_holdout": ["2026-10-21", null]
+    "exploratory_evaluation": ["2022-11-01", "2026-10-20"]
   }
 }

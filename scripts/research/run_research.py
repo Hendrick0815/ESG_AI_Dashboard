@@ -48,7 +48,8 @@ def sha256(p: Path) -> str:
 
 def apply_config(cfg: dict) -> None:
     config.HOLD_DAYS = cfg["hold_days"]
-    config.REBALANCE_MODE = cfg.get("rebalance_mode", "trading_days")   # 論文鎖定：每 hold_days 個交易日調倉
+    config.REBALANCE_MODE = cfg.get("rebalance_mode", "calendar")       # 與網站相同：每 rebalance_weeks 週固定同一天調倉
+    config.REBALANCE_WEEKS = cfg.get("rebalance_weeks", 2)
     config.RETRAIN_EVERY = cfg["retrain_every_rebalances"]
     config.USE_PEAK_FEATURES = cfg["use_peak_features"]
     config.USE_INDUSTRY_FEATURES = cfg["use_industry_features"]
