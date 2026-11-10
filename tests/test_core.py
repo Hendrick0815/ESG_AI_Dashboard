@@ -478,3 +478,15 @@ def test_market_view_uses_only_past_and_follows_state():
     ret = pd.concat([pd.DataFrame({"date": days2, "portfolio": "^TWII", "ret": r}),
                      pd.DataFrame({"date": days2, "portfolio": "單純 AI", "ret": 1.5 * r})])
     assert abs(forecast.strategy_beta(ret, "單純 AI", days2[-1]) - 1.5) < 1e-9
+
+
+def test_drop_incomplete_tail():
+    """最後一天只有少數股票有報價（資料來源還沒更新完）→ 不納入，避免績效線被當成 0 報酬而變平。"""
+    from src.store import drop_incomplete_tail
+    days = pd.bdate_range("2026-10-01", periods=15)
+    full = pd.DataFrame([(d, f"{i:04d}.TW", 100.0) for d in days for i in range(50)], columns=["date", "ticker", "close"])
+    partial = pd.DataFrame([(days[-1] + pd.Timedelta(days=3), "0001.TW", 101.0)], columns=["date", "ticker", "close"])
+    out, cut = drop_incomplete_tail(pd.concat([full, partial], ignore_index=True))
+    assert cut == [days[-1] + pd.Timedelta(days=3)] and out["date"].max() == days[-1]
+    out2, cut2 = drop_incomplete_tail(full)
+    assert cut2 == [] and len(out2) == len(full)

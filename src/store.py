@@ -442,6 +442,25 @@ def demo_sets() -> List[str]:
     return sorted(p.name for p in config.DEMO_DIR.iterdir() if p.is_dir()) if config.DEMO_DIR.exists() else []
 
 
+def drop_incomplete_tail(df: pd.DataFrame, min_ratio: float = 0.5, lookback: int = 10):
+    """去掉最後幾天「只有少數股票有報價」的日期（例如 Yahoo 當天只回傳部分股票）。
+    這種日子若留著，沒報價的持股會被當成 0 報酬，績效線變成一條水平線、比較基準也會缺一段。
+    判斷：最後一天的檔數 < 前 lookback 天檔數中位數 × min_ratio 就丟掉，重複檢查。回傳 (資料, 被丟掉的日期)。"""
+    if df is None or df.empty or "date" not in df:
+        return df, []
+    counts = df.groupby("date")["ticker"].nunique().sort_index()
+    dropped = []
+    while len(counts) > lookback:
+        typical = counts.iloc[-lookback - 1:-1].median()
+        if counts.iloc[-1] >= typical * min_ratio:
+            break
+        dropped.append(pd.Timestamp(counts.index[-1]))
+        counts = counts.iloc[:-1]
+    if dropped:
+        df = df[df["date"] < min(dropped)].reset_index(drop=True)
+    return df, sorted(dropped)
+
+
 def load_dataset(mode: str = "real", demo_set: Optional[str] = None) -> Dataset:
     notes: List[str] = []
     listing = _read(config.LISTING_FILE, date_cols=())
@@ -466,6 +485,12 @@ def load_dataset(mode: str = "real", demo_set: Optional[str] = None) -> Dataset:
             local[k]["source"] = "local"
     prices = merge_prices(local["prices"], _read(config.PRICES_FILE))
     bench = merge_prices(local["benchmarks"], _read(config.BENCH_FILE))
+    prices, cut_p = drop_incomplete_tail(prices)
+    bench, cut_b = drop_incomplete_tail(bench, lookback=5)
+    cut = sorted(set(cut_p) | set(cut_b))
+    if cut:
+        notes.append("最新交易日 " + "、".join(str(d.date()) for d in cut)
+                     + " 只有少數股票取得報價（資料來源尚未更新完成），暫不納入；下次更新補齊後會自動加入。")
 
     otc = set(listing.loc[listing["market"] == "上櫃", "code"].astype(str)) if not listing.empty else None
     tej = load_tej(config.TEJ_DIR, otc)
