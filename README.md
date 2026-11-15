@@ -40,7 +40,7 @@ python tests/smoke_ui.py
 | 策略回測 | 績效表、淨值／回撤／風險報酬圖（可選期間：全部、近 1／3／5 年、有 ESG 以後、自訂；可切換對數刻度）、每日持股比例、歷次持股、換股成本、方法說明 | v5 + generate_backtest |
 | 個股分析 | K 線、均線、波動、報酬分布、ESG 雷達圖、同業比較 | my_project/app.py |
 | 模型解釋 | 特徵重要性、Rank IC、Top N 超額報酬、SHAP、訓練紀錄 | v5 模型解釋 |
-| 論文正式版本 | 論文第三、四章的表格與圖（逐期股票池、含下市股，固定在資料截點），與其他頁面的「目前前 300 大」回測不同 | 新增 |
+| 逐期股票池回測 | 論文第三、四章的表格與圖（逐期股票池、含下市股，固定在資料截點），與其他頁面的「目前前 300 大」回測不同 | 新增 |
 | 產業與籌碼 | 產業趨勢排行、三大法人（主力）買賣超排行與產業分布（僅供參考，不影響選股） | 新增 |
 
 左側的策略設定在各頁共用。每組設定第一次計算完會存到 `outputs/cache/`，之後打開（包括重開網頁、`run_backtest.py` 算過的設定）直接讀檔；
@@ -99,10 +99,10 @@ data/
 | AI+ESG | (1−w)×AI 排名 + w×TESG 排名（w 預設 0.3）。原規劃的爭議分數、EPS 排除條件因資料沒有對應欄位，程式不會套用 |
 | 單純 ESG（論文稱「規則式 ESG 篩選投組」） | TESG 總分最高的 N 檔 |
 | 風險控制 | ① 不買跌破年線（200 日均線）的股票 ② 不買近 60 日波動最高的 20% ③ 加權指數跌破年線時持股減半（每天收盤檢查）。預設關閉 |
-| 回測 | **固定每 2 週**收盤換股（從回測起點起算、固定同一個星期幾，遇假日順延；論文正式版本相同）、隔天起算報酬、持有期間權重漂移；等權或集中加權；**一律扣**手續費 0.1425%×2 + 證交稅 0.3% |
+| 回測 | **固定每 2 週**收盤換股（從回測起點起算、固定同一個星期幾，遇假日順延；逐期股票池回測相同）、隔天起算報酬、持有期間權重漂移；等權或集中加權；**一律扣**手續費 0.1425%×2 + 證交稅 0.3% |
 | 績效 | 累積／幾何年化報酬、年化波動、Sharpe（扣無風險利率 1%）、最大回撤、日報酬平均與變異數 |
 
-## 論文正式版本（可重現）
+## 逐期股票池回測（可重現）
 
 論文使用的設定集中在 **research_config.json**（資料截點 2026-10-20、Top 20、等權、Random Forest、種子 42 等），網站預設值與它一致（皆為每 2 週固定同一天調倉）；網站每天更新的數字會隨新資料改變，論文以研究版本為準。
 
@@ -115,7 +115,7 @@ python scripts/fetch_finmind_twse.py --file data/raw/yahoo_all/missing.txt   # Y
 python scripts/research/check_twse_coverage.py                         # 上市股票涵蓋率檢查（有缺漏會停止）
 python scripts/research/run_research.py --data-snapshot 5c2c22c        # 逐期股票池＋正式回測＋所有表格檔
 python scripts/research/build_report.py                                # 由表格檔產生論文 Word／PDF
-python scripts/research/capture_web.py                                 # 網站「論文正式版本」頁截圖（需 playwright）
+python scripts/research/capture_web.py                                 # 網站「逐期股票池回測」頁截圖（需 playwright）
 python scripts/research/build_report.py                                # 再產生一次，表格換成網站截圖
 ```
 

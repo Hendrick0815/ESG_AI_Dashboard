@@ -188,7 +188,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     P("閱讀時請注意兩項名稱與設定上的差異：")
     B(["**策略名稱：**網站程式與畫面中的「單純 ESG」，即論文所稱的「規則式 ESG 篩選投組」；「單純 AI」與「AI+ESG」名稱相同。",
        "**股票池：**網站「首頁」、「策略回測」、「模型解釋」等頁面以「目前」成交金額前 300 大的股票回測，供日常查詢使用，"
-       "含有存活者偏誤，報酬會偏高；論文的正式結果以逐期股票池（含之後下市的股票）重新計算，呈現在「論文正式版本」頁與第四章。"
+       "含有存活者偏誤，報酬會偏高；論文的正式結果以逐期股票池（含之後下市的股票）重新計算，呈現在「逐期股票池回測」頁與第四章。"
        "兩者共用同一套選股與回測程式（第十節），差別只在輸入的股票池與調倉日規則。"])
 
     # ---------------- 一、架構
@@ -397,26 +397,26 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     ], [4.2, 5.4, 4.2], "lll")
     X.explain("表", "對照產業趨勢與三大法人買賣超各畫面區塊所在之程式位置及計算方式。")
 
-    # ---------------- 九、論文正式版本
-    D(2, "九、論文正式版本頁（pages/5_論文正式版本.py）")
-    pg = "pages/5_論文正式版本.py"
+    # ---------------- 九、逐期股票池回測
+    D(2, "九、逐期股票池回測頁（pages/5_逐期股票池回測.py）")
+    pg = "pages/5_逐期股票池回測.py"
     P("本頁呈現論文第三章與第四章的正式表格與圖。表格內容由 build_report.py 產生論文時一併寫入 web_tables.json，"
-      "頁面讀取後以與論文相同的格式（深藍表頭、隔列淺底）顯示；論文中的表 3-3、3-4、3-8 與表 4-1 至 4-14（表 4-10 除外）"
+      "頁面讀取後以與論文相同的格式（深藍表頭、隔列淺底）顯示；論文中的表 3-3、3-4、3-9 與表 4-1 至 4-15（表 4-10 除外）"
       "即為本頁的截圖（由 capture_web.py 擷取）。因此網站與論文的數字出自同一份輸出檔，不會不一致。")
-    X.figure("thesis", "論文正式版本頁（樣本與期間分頁）")
-    X.explain("圖", "呈現論文正式版本頁，內容為論文第三、四章之正式表格與圖，上方指標列示各投組與 ETF 之年化報酬、夏普值與最大回撤；論文中之表格即為本頁之截圖，故網站與論文之數據一致。")
+    X.figure("thesis", "逐期股票池回測頁（樣本與期間分頁）")
+    X.explain("圖", "呈現逐期股票池回測頁，內容為論文第三、四章之正式表格與圖，上方指標列示各投組與 ETF 之年化報酬、夏普值與最大回撤；論文中之表格即為本頁之截圖，故網站與論文之數據一致。")
     th, sh = fn(pg, "table_html"), fn(pg, "show_table")
     tb = rng(pg, "NAMES = [", "with st.expander(\"下載與重現方式\")")
     tb = (tb[0], tb[1] - 2)
     w1 = X.code(pg, [th, sh, tb], "表格產生與分頁配置")
-    X.table("論文正式版本頁畫面與程式對照", ["畫面區塊", "程式位置", "說明"], [
-        ["版本與期間說明、績效指標卡", loc(pg, rng(pg, "st.caption(f\"研究版本", "metric_cards(cards, min_width=180)")), "讀取 research_config.json 與 table_4_1_performance.csv"],
+    X.table("逐期股票池回測頁畫面與程式對照", ["畫面區塊", "程式位置", "說明"], [
+        ["版本與期間說明、績效指標卡", loc(pg, rng(pg, "st.caption(f\"資料截點", "metric_cards(cards, min_width=180)")), "讀取 research_config.json 與 table_4_1_performance.csv"],
         ["五個分頁的表格", f"{loc(pg, th, sh, tb)}（{w1}）", "樣本與期間、投組績效、風險比較、統計檢定、穩健性測試"],
         ["圖 4-1 累積淨值、圖 4-2 ESG 分數", loc(pg, fn(pg, "nav_figure"), fn(pg, "esg_figure")), "讀取 strategy_returns.csv 與 esg_quality_by_rebalance.csv"],
         ["下載與重現方式", loc(pg, rng(pg, 'with st.expander("下載與重現方式")', 'key=f"dl-{name}")')), "提供逐期股票池、持股、報酬與 manifest 下載"],
         ["論文表格截圖", loc("scripts/research/capture_web.py", fn("scripts/research/capture_web.py", "main")), "以 ?all=1 依序展開全部表格後逐一截圖"],
     ], [4.2, 5.4, 4.2], "lll")
-    X.explain("表", "對照論文正式版本頁各畫面區塊所在之程式位置，以及論文表格截圖之產生方式。")
+    X.explain("表", "對照逐期股票池回測頁各畫面區塊所在之程式位置，以及論文表格截圖之產生方式。")
 
     # ---------------- 十、核心引擎
     D(2, "十、選股與回測核心程式（網站與論文共用）")
@@ -447,13 +447,13 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     e8 = X.code("src/backtest.py", [pe, ce], "短期轉弱減碼 pullback_exposure()、combine_exposure()（2026 年 11 月新增）")
     X.table("核心程式與論文研究方法對照", ["步驟", "程式位置", "論文對應"], [
         ["整體流程", f"{loc('src/pipeline.py', pr)}（{e1}）", "圖 1-1 研究流程"],
-        ["技術面特徵、見頂訊號、預測目標（未來 10 日報酬）", f"{loc('src/features.py', at)}（{e2}）", "第三章第二節、表 3-5"],
+        ["技術面特徵、見頂訊號、預測目標（未來 10 日報酬）", f"{loc('src/features.py', at)}（{e2}）", "第三章第二節、表 3-6"],
         ["ESG 與估值依公告日對齊", f"{loc('src/features.py', am)}（{e3}）", "表 3-2 可得日規則"],
-        ["調倉日（論文與網站皆為每 2 週固定同一星期幾）", f"{loc('src/backtest.py', rs_)}（{e4}）", "第三章第三節、表 3-9"],
+        ["調倉日（論文與網站皆為每 2 週固定同一星期幾）", f"{loc('src/backtest.py', rs_)}（{e4}）", "第三章第三節、表 3-10"],
         ["Random Forest 滾動訓練（每 3 次調倉重訓、訓練樣本截至調倉日前 10 日）", f"{loc('src/models.py', wf)}（{e5}）", "第三章第四節（一）（二）"],
-        ["單純 AI、AI+ESG、規則式 ESG 篩選的分數", f"{loc('src/backtest.py', er, ss)}（{e6}）", "第三章第三、四節、表 3-6"],
+        ["單純 AI、AI+ESG、規則式 ESG 篩選的分數", f"{loc('src/backtest.py', er, ss)}（{e6}）", "第三章第三、四節、表 3-7"],
         ["前 N 檔與權重", loc("src/backtest.py", pk, mw), "Top 20 等權"],
-        ["每日淨值、週轉率與交易成本", f"{loc('src/backtest.py', sm_, tc)}（{e7}、{r6}）", "表 3-9 交易假設、表 4-12"],
+        ["每日淨值、週轉率與交易成本", f"{loc('src/backtest.py', sm_, tc)}（{e7}、{r6}）", "表 3-10 交易假設、表 4-12"],
         ["績效指標與 CAPM", f"{loc('src/metrics.py', pf, cp)}（{r2}）", "第三章第五節、表 4-1、表 4-4"],
         ["短期轉弱減碼（選用，網站 2026 年 11 月新增）", f"{loc('src/backtest.py', pe, ce)}（{e8}）", "論文未使用（表 3-1：不使用風險控制）"],
         ["大盤狀態特徵（設定開關，預設關閉）", loc("src/features.py", fn("src/features.py", "add_market_features")), "論文未使用；已測試、效果不一致"],
@@ -498,7 +498,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     h2 = X.code("src/research/exchange.py", [el], "逐期股票池（調倉日以前 20 日平均成交金額前 300 大）eligibility()")
     hm, ca, ho, bs = (fn("src/research/stats.py", x) for x in ("hac_mean", "capm", "holm", "bootstrap_ci_ann"))
     dt = fn("src/research/stats.py", "diff_test")
-    h3 = X.code("src/research/stats.py", [hm, ca, dt, ho, bs], "統計檢定：HAC 平均數、CAPM、差異檢定、Holm 調整、區塊 bootstrap")
+    h3 = X.code("src/research/stats.py", [hm, ca, dt, bs], "統計檢定：HAC 平均數、CAPM、差異檢定、區塊 bootstrap")
     t41 = rng("scripts/research/run_research.py", "# 表 4-1 績效", 'tdir / "table_4_1_performance.csv"')
     h4 = X.code("scripts/research/run_research.py", [t41], "表 4-1 績效與信賴區間的計算")
     Nn(f"註：run_research.py 輸出檔名與程式註解中的表號沿用初版編號，與論文表號的對應見{L('表', X.tab + 1)}。")
@@ -506,15 +506,15 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
     X.table("論文表格、輸出檔與產生程式對照", ["論文表／圖", "輸出檔（outputs/research/thesis_2026-10-20/）", "產生程式"], [
         ["表 3-3 逐期股票池概況", "universe_summary.csv、universe_history.csv、universe_screening.csv", f"{loc('src/research/exchange.py', el)}（{h2}）；exchange.universe_summary()"],
         ["表 3-4 樣本期間切分", "tables/table_3_7_period_split.csv", f"{rr} main()"],
-        ["表 3-8 參數試驗紀錄", "tables/table_3_8_parameter_trials.csv", "parameter_trials.csv（探索階段紀錄）"],
+        ["表 3-9 參數試驗紀錄", "tables/table_3_8_parameter_trials.csv", "parameter_trials.csv（探索階段紀錄）"],
         ["表 4-1 績效比較", "tables/table_4_1_performance.csv", f"{loc(rr, t41)}（{h4}）"],
         ["表 4-2 各年度報酬", "tables/table_4_2_yearly.csv", "src/research/analysis.py yearly()"],
         ["表 4-3 投組 ESG 品質；圖 4-2", "tables/table_4_10_esg_quality.csv、esg_quality_by_rebalance.csv", "src/research/analysis.py esg_quality()"],
         ["表 4-4 風險指標比較", "tables/table_4_1_performance.csv、table_4_4_capture.csv", "build_report.py risk_table()"],
         ["表 4-5 市場情境", "tables/table_4_3_regimes.csv、regimes.csv", "src/research/analysis.py classify_regimes()、regime_table()"],
         ["表 4-6 上漲日／下跌日參與率", "tables/table_4_4_capture.csv", "src/research/analysis.py capture()"],
-        ["表 4-7 CAPM 估計", "tables/table_4_5_capm_hac.csv", f"src/research/stats.py capm()、holm()（{h3}）"],
-        ["表 4-8 日報酬差異檢定", "tables/table_4_6_diff_hac.csv", f"src/research/stats.py diff_test()、holm()（{h3}）"],
+        ["表 4-7 CAPM 估計", "tables/table_4_5_capm_hac.csv", f"src/research/stats.py capm()（{h3}）"],
+        ["表 4-8 日報酬差異檢定", "tables/table_4_6_diff_hac.csv", f"src/research/stats.py diff_test()（{h3}）"],
         ["表 4-9 模型選股能力", "tables/table_4_7_model_skill.csv、rank_ic.csv", "pipeline.rank_ic()、stats.hac_mean()"],
         ["表 4-10 假說檢驗彙整", "（由表 4-1、4-7、4-8 彙整）", "build_report.py ch4()"],
         ["表 4-11 股票池與調倉日期對照", "tables/table_4_2b_*.csv、table_4_11c_*.csv、strategy_returns_*.csv", f"{rr} main()（--test-yahoo 等對照）"],
@@ -543,7 +543,7 @@ def appendix_e_detail(R, shots_dir, note_fn, figure_fn=None, standalone=False):
          ("tests/test_core.py", "test_market_view_uses_only_past_and_follows_state", "大盤狀態預估只用已實現的資料；策略 Beta 計算正確"),
          ("tests/test_research.py", "test_eligibility_top_n_uses_past_window_only", "逐期股票池只用過去 20 日成交金額"),
          ("tests/test_research.py", "test_daily_returns_twse_and_tpex", "上市櫃日報酬（含權息）計算"),
-         ("tests/test_research.py", "test_hac_and_holm", "HAC 標準誤與 Holm 調整"),
+         ("tests/test_research.py", "test_hac_and_holm", "HAC 標準誤"),
          ("tests/test_research.py", "test_regimes_use_previous_day", "市場情境只用前一日資訊")]
     rows = []
     for f, name, what in T:
@@ -568,7 +568,7 @@ PROGRAM_FILES = [
         ("pages/2_個股分析.py", "個股走勢、風險指標、ESG、同業比較", "個股分析頁"),
         ("pages/3_模型解釋.py", "特徵重要性、Rank IC、SHAP、訓練紀錄", "模型解釋頁"),
         ("pages/4_產業與籌碼.py", "產業趨勢、三大法人買賣超", "產業與籌碼頁"),
-        ("pages/5_論文正式版本.py", "論文第三、四章的正式表格與圖", "論文正式版本頁；第四章"),
+        ("pages/5_逐期股票池回測.py", "論文第三、四章的正式表格與圖", "逐期股票池回測頁；第四章"),
     ]),
     ("介面元件", [
         ("src/ui/common.py", "側邊欄設定、回測結果快取、持股表與指標卡", "所有頁面"),
@@ -577,9 +577,9 @@ PROGRAM_FILES = [
         ("src/cache.py", "回測結果存檔（資料內容雜湊）", "首頁、策略回測、模型解釋"),
     ]),
     ("核心運算", [
-        ("src/config.py", "共用設定：路徑、交易成本、調倉、模型參數", "全部；表 3-1、表 3-9"),
+        ("src/config.py", "共用設定：路徑、交易成本、調倉、模型參數", "全部；表 3-1、表 3-10"),
         ("src/pipeline.py", "串接資料→特徵→模型→選股→回測", "圖 1-1；首頁、策略回測"),
-        ("src/features.py", "技術面、見頂訊號、產業特徵；依公告日對齊", "第三章第二節；表 3-5"),
+        ("src/features.py", "技術面、見頂訊號、產業特徵；依公告日對齊", "第三章第二節；表 3-6"),
         ("src/models.py", "Random Forest／XGBoost 滾動式訓練", "第三章第四節；模型解釋頁"),
         ("src/backtest.py", "調倉日、策略分數、權重、交易成本、回測", "第三章第三、四節"),
         ("src/metrics.py", "年化報酬、波動、Sharpe、回撤、Beta、Alpha", "第三章第五節；績效表"),
@@ -597,7 +597,7 @@ PROGRAM_FILES = [
     ]),
     ("論文研究", [
         ("src/research/exchange.py", "逐日行情、價格面板、逐期股票池", "第三章第一節；表 3-3"),
-        ("src/research/stats.py", "HAC、CAPM、差異檢定、Holm、bootstrap", "第三章第五節；第四章第三節"),
+        ("src/research/stats.py", "HAC、CAPM、差異檢定、bootstrap", "第三章第五節；第四章第三節"),
         ("src/research/analysis.py", "市場情境、參與率、年度報酬、ESG 品質", "表 4-2、4-3、4-5、4-6"),
         ("scripts/research/run_research.py", "論文正式結果與 manifest", "第四章全部表格；附錄 A"),
         ("scripts/research/check_twse_coverage.py", "上市股票涵蓋率檢查", "第三章第一節（三）"),
@@ -631,7 +631,7 @@ PAGE_MAP = [
     ["個股分析", "pages/2_個股分析.py", "crawlers.yahoo.fetch_prices()、metrics.price_metrics()、performance()", "個股走勢、風險指標、ESG 評等、同業比較"],
     ["模型解釋", "pages/3_模型解釋.py", "pipeline.rank_ic()、models.walk_forward() 的訓練紀錄", "Rank IC、特徵重要性、SHAP、訓練紀錄"],
     ["產業與籌碼", "pages/4_產業與籌碼.py", "analysis.industry_trend()、flow_leaders()、flow_by_industry()", "產業趨勢、三大法人買賣超排行"],
-    ["論文正式版本", "pages/5_論文正式版本.py", "web_tables.json（build_report.py 產生）、charts.nav_chart()", "論文第三、四章的正式表格與圖"],
+    ["逐期股票池回測", "pages/5_逐期股票池回測.py", "web_tables.json（build_report.py 產生）、charts.nav_chart()", "論文第三、四章的正式表格與圖"],
 ]
 
 
@@ -669,7 +669,7 @@ def architecture_figure(out_path):
     box(6.9, 3.0, 3.0, 1.6, "③ 介面層（網站）", "app.py、pages/*.py\nsrc/ui/common.py、charts.py\n→ Streamlit Cloud")
     box(3.5, 0.75, 3.0, 1.75, "④ 研究層（論文）", "run_research.py\nsrc/research/\n→ outputs/research\n→ build_report.py → 本論文")
     box(0.1, 0.75, 3.0, 1.75, "⑤ 自動化", "GitHub Actions 每日更新\n（update_data.py、run_backtest.py）\nauto_push.py：測試後推送")
-    box(6.9, 0.75, 3.0, 1.75, "論文正式版本頁", "pages/5_論文正式版本.py\n讀取 web_tables.json\ncapture_web.py 截圖回論文")
+    box(6.9, 0.75, 3.0, 1.75, "逐期股票池回測頁", "pages/5_逐期股票池回測.py\n讀取 web_tables.json\ncapture_web.py 截圖回論文")
     arrow((1.6, 5.0), (1.6, 4.6), "下載")
     arrow((3.1, 3.8), (3.5, 3.8))
     arrow((6.5, 3.8), (6.9, 3.8))
@@ -697,7 +697,7 @@ def appendix_e(R, shots_dir=None, note_fn=None, figure_fn=None):
       "程式碼存放於 GitHub（Hendrick0815/ESG_AI_Dashboard）。本附錄說明網站各頁面由哪些程式產生，並簡介選股、回測與論文統計的核心程式；"
       "表中的行號於產生論文時由程式檔自動定位，與現行程式一致。", align=0)   # 靠左：英文名稱較長，左右對齊會拉開字距
     P("網站與論文共用同一套選股與回測程式，差別在於輸入：網站其他頁面以「目前」成交金額前 300 大回測，供日常查詢，含存活者偏誤；"
-      "論文以逐期股票池（含之後下市的股票）重新計算，結果呈現在「論文正式版本」頁與第四章。網站中的「單純 ESG」即論文的「規則式 ESG 篩選投組」。")
+      "論文以逐期股票池（含之後下市的股票）重新計算，結果呈現在「逐期股票池回測」頁與第四章。網站中的「單純 ESG」即論文的「規則式 ESG 篩選投組」。")
 
     D(2, "一、網站頁面與程式對照")
     pg = lambda f: f"{f}（{n_lines(f)} 行）"
@@ -708,10 +708,10 @@ def appendix_e(R, shots_dir=None, note_fn=None, figure_fn=None):
         ["個股分析", pg("pages/2_個股分析.py"), "metrics.price_metrics()", "個股走勢、風險指標、ESG 評等、同業比較"],
         ["模型解釋", pg("pages/3_模型解釋.py"), "pipeline.rank_ic()", "Rank IC、特徵重要性、訓練紀錄"],
         ["產業與籌碼", pg("pages/4_產業與籌碼.py"), "analysis.industry_trend()、flow_leaders()", "產業趨勢、三大法人買賣超（僅供參考）"],
-        ["論文正式版本", pg("pages/5_論文正式版本.py"), "讀取 build_report.py 產生的 web_tables.json", "論文第三、四章的正式表格與圖"],
+        ["逐期股票池回測", pg("pages/5_逐期股票池回測.py"), "讀取 build_report.py 產生的 web_tables.json", "論文第三、四章的正式表格與圖"],
     ], [1.8, 3.4, 4.0, 4.6], "llll")
     Nn("註：所有頁面共用側邊欄設定（src/ui/common.py sidebar_strategy()）與回測存檔（src/cache.py），同一組資料與參數只計算一次。")
-    P(f"表 {LETTER}-1 對照網站七個頁面與其對應之程式檔及主要呼叫之核心函式。由表可知，各頁面僅負責呈現，選股、回測與績效計算皆集中於 src/ 目錄下之共用程式；論文正式版本頁則直接讀取論文產生程式所輸出之表格檔，故網站與論文之數據來源一致。")
+    P(f"表 {LETTER}-1 對照網站七個頁面與其對應之程式檔及主要呼叫之核心函式。由表可知，各頁面僅負責呈現，選股、回測與績效計算皆集中於 src/ 目錄下之共用程式；逐期股票池回測頁則直接讀取論文產生程式所輸出之表格檔，故網站與論文之數據來源一致。")
 
     D(2, "二、核心程式")
     P("選股與回測由 pipeline.run() 串接，依序為：建立特徵 → 滾動訓練模型並預測 → 計算三種策略的分數 → 模擬每日淨值並扣除交易成本 → 計算績效。"
@@ -731,7 +731,7 @@ def appendix_e(R, shots_dir=None, note_fn=None, figure_fn=None):
         ["績效指標", loc("src/metrics.py", fn("src/metrics.py", "performance"), fn("src/metrics.py", "capm")), "年化報酬、波動、Sharpe、最大回撤、Beta、詹森 Alpha"],
         ["逐期股票池（論文）", F("src/research/exchange.py", "eligibility"), "每個交易日以過去 20 日平均成交金額取前 300 大，含之後下市的股票"],
         ["統計檢定（論文）", loc("src/research/stats.py", fn("src/research/stats.py", "hac_mean"), fn("src/research/stats.py", "bootstrap_ci_ann")),
-         "Newey-West 標準誤、CAPM、差異檢定、Holm 調整、區塊 bootstrap 信賴區間"],
+         "Newey-West 標準誤、CAPM、差異檢定、區塊 bootstrap 信賴區間"],
         ["論文正式結果", F("scripts/research/run_research.py", "main"), "依 research_config.json 重跑回測，輸出第四章各表與 manifest.json"],
     ], [3.0, 5.0, 5.8], "lll")
     P(f"表 {LETTER}-2 依執行順序列示選股與回測各步驟所在之程式檔、行數及其功能。前九列為網站與論文共用之流程，後三列為論文專用之逐期股票池、統計檢定與正式結果產生程式；如需檢查特定步驟之計算，可依表列行數查閱對應程式。")

@@ -1,4 +1,4 @@
-"""把網站「論文正式版本」頁面的表格與圖截圖，存到 outputs/research/<run_id>/report/web/，
+"""把網站「逐期股票池回測」頁面的表格與圖截圖，存到 outputs/research/<run_id>/report/web/，
 build_report.py 會用這些截圖取代對應的表格與圖。
 
 用法：
@@ -24,7 +24,7 @@ from report_lib import SHOT_CSS_W, SHOT_DPR  # noqa: E402
 
 CFG = json.loads((ROOT / "research_config.json").read_text(encoding="utf-8"))
 OUT = ROOT / "outputs" / "research" / CFG["run_id"] / "report" / "web"
-PAGE = "論文正式版本"
+PAGE = "逐期股票池回測"
 CSS = f"""
 section[data-testid="stSidebar"], header[data-testid="stHeader"], [data-testid="stToolbar"] {{display:none !important}}
 [data-testid="stMainBlockContainer"] {{max-width:{SHOT_CSS_W + 40}px !important; padding:24px 20px !important}}

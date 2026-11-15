@@ -234,7 +234,7 @@ class Report:
 
     def table(self, header, rows, widths, align=None, size=10.5, header_size=None):
         """widths：各欄比例；align：'l'/'c'/'r' 字串（每欄一字）。
-        有對應的網站截圖（shots[表號]）時改放截圖；表格內容另記在 web_tables，供網站「論文正式版本」頁顯示。"""
+        有對應的網站截圖（shots[表號]）時改放截圖；表格內容另記在 web_tables，供網站「逐期股票池回測」頁顯示。"""
         key = table_key(self._cap)
         if key and not any(t["key"] == key for t in self.web_tables):
             self.web_tables.append({"key": key, "caption": self._cap, "header": [str(h) for h in header],
