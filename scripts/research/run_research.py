@@ -196,10 +196,15 @@ def main():
                     help="data/processed 使用的資料快照（例如 GitHub commit 代號），記錄在 manifest.json")
     ap.add_argument("--test-yahoo", action="store_true",
                     help="對照組：股票池改用平台「目前」成交金額前 300 大的 Yahoo 股價（有後見之明偏誤），輸出到 <run_id>_current_universe")
+    ap.add_argument("--overwrite", action="store_true",
+                    help="允許覆寫已存在的研究版本（預設禁止：已凍結的版本須改用新的 run_id）")
     a = ap.parse_args()
     cfg = json.loads(Path(a.config).read_text(encoding="utf-8"))
     apply_config(cfg)
     out = ROOT / "outputs" / "research" / (cfg["run_id"] + ("_current_universe" if a.test_yahoo else ""))
+    if (out / "manifest.json").exists() and not a.overwrite:     # 版本凍結：避免後續修改混入既有研究結果
+        sys.exit(f"研究版本 {out.name} 已存在且已凍結（{out / 'manifest.json'}）。"
+                 "若要以修改後的程式或設定重跑，請在 research_config.json 改用新的 run_id；確定要覆寫才加 --overwrite。")
     tdir = out / "tables"
     tdir.mkdir(parents=True, exist_ok=True)
     started = datetime.now().isoformat(timespec="seconds")

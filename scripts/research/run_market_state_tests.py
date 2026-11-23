@@ -74,6 +74,8 @@ def main():
     rr.apply_config(cfg)
     run_dir = ROOT / "outputs" / "research" / cfg["run_id"]
     out = run_dir / "market_state_tests"
+    if (run_dir / "tables" / "table_4_15_market_state_tests.csv").exists() and "--overwrite" not in sys.argv:
+        sys.exit(f"{run_dir.name} 的表 4-15 已存在且版本已凍結；確定要覆寫才加 --overwrite。")
     out.mkdir(parents=True, exist_ok=True)
     ds, px, elig, base = rr.build_dataset(cfg, out)
     rows = []
