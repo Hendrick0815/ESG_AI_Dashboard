@@ -108,16 +108,16 @@ def sidebar_strategy(ds: store.Dataset) -> Params:
                                          help="混合分數 =（1−比重）× AI 預測排名 ＋ 比重 × ESG 排名"))
         st.caption(f"每 {config.REBALANCE_WEEKS} 週調倉（固定同一天，遇假日順延）；已扣交易成本（手續費 0.1425%、賣出證交稅 0.3%）")
         risk_on = _keep("risk_on", st.checkbox(
-            "風險控制（實驗功能；降低最大回撤，報酬會變低）", _remember("risk_on", config.DEFAULT_RISK_CONTROL),
+            "風險控制（探索性補充分析；降低最大回撤，報酬會變低）", _remember("risk_on", config.DEFAULT_RISK_CONTROL),
             help="① 不買跌破年線（200 日均線）的股票\n\n"
                  "② 不買近 60 日波動最高的 20% 股票\n\n"
                  "③ 加權指數跌破年線時持股減半，站回年線恢復滿倉\n\n"
                  "預設關閉（以最高報酬為目標）；勾選可以比較降低回撤後的結果。"))
         pull_on = _keep("pull_on", st.checkbox(
-            "短期轉弱減碼（實驗功能；大盤回檔時持股減半）", _remember("pull_on", config.DEFAULT_PULLBACK_CONTROL),
+            "短期轉弱減碼（探索性補充分析；大盤回檔時持股減半）", _remember("pull_on", config.DEFAULT_PULLBACK_CONTROL),
             help=f"加權指數收盤價距近 {config.PULLBACK_WINDOW} 日最高收盤價跌幅超過 {-config.PULLBACK_DD:.0%} 時，"
                  f"持股降為 {config.PULLBACK_EXPOSURE:.0%}（其餘為現金）；回到 {-config.PULLBACK_DD:.0%} 以內恢復滿倉。\n\n"
-                 "反應比「跌破年線」快，可減少回檔時的虧損與最大回撤；代價是報酬降低、換倉次數增加。\n\n實驗功能：為事後新增的探索性設定，不屬於研究主策略，也未經樣本外驗證。"))
+                 "反應比「跌破年線」快，可減少回檔時的虧損與最大回撤；代價是報酬降低、換倉次數增加。\n\n探索性補充分析：為事後新增的設定，不取代研究主策略，也未經樣本外檢驗。"))
         with st.expander("進階"):
             trees = _keep("trees", st.slider("樹的數量", 50, 500, _remember("trees", config.DEFAULT_N_ESTIMATORS), 50))
             static_esg = _keep("static_esg", st.checkbox(
@@ -253,12 +253,12 @@ def holdings_block(sub: pd.DataFrame, names: Dict[str, str], strat: str, empty_t
 
 
 def demo_warning() -> None:
-    """展示型回測警語：這些頁面的股票池是「目前」成交金額前 300 大，含存活者偏誤，不是研究正式結果。"""
-    st.warning("**展示型回測，非研究正式結果**：本頁股票池為「目前」成交金額前 300 大的上市櫃公司，"
+    """展示型回測警語：這些頁面的股票池是「目前」成交金額前 300 大，含存活者偏誤，不是本研究主要結果。"""
+    st.warning("**展示型回測，非本研究主要結果**：本頁股票池為「目前」成交金額前 300 大的上市櫃公司，"
                "未包含過去曾經熱門、之後下市或冷門的股票，存在**存活者偏誤**，報酬會偏高。"
-               "研究正式結果（逐期重建股票池、含下市股票、資料截至 2026-10-20）請見「逐期股票池回測」頁。", icon="⚠️")
+               "本研究主要結果（逐期重建股票池、含下市股票、資料截至 2026-10-20）請見「逐期股票池回測」頁。", icon="⚠️")
     try:
-        st.page_link("pages/5_逐期股票池回測.py", label="前往研究正式結果：逐期股票池回測", icon="🧪")
+        st.page_link("pages/5_逐期股票池回測.py", label="前往本研究主要結果：逐期股票池回測", icon="🧪")
     except Exception:
         pass
 

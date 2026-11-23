@@ -2,7 +2,7 @@
   "run_id": "thesis_2026-10-20_v2",
   "started": "2026-11-23T19:09:29",
   "finished": "2026-11-23T19:25:43",
-  "git_commit": "25952d01b5902b9856af1bee311510a2e6e58402",
+  "git_commit": null,
   "data_snapshot": null,
   "config": {
     "run_id": "thesis_2026-10-20_v2",
@@ -96,7 +96,11 @@
     "data/raw/finmind_twse/（合計 55 檔）": "fe9106636c4d304dbb948d55dbc90c0e316335d34b25faf30bedbc7373692df8",
     "data/raw/twse_codes.csv": "95c48446f4600781df8b517526e00776286176aff8570db96eff1608a0cfa3e8",
     "data/raw/yahoo_all/missing.txt": "5b68f7642be2cf78837867d295a0013ad10f867c93d4b33d12a332557cd591cf",
-    "docs/parameter_trials.csv": "fa3a4973fd21e759f12122bf843e3dce4f4e23ab4790af4cd8f9a7c942ab68d8"
+    "docs/parameter_trials.csv": "fa3a4973fd21e759f12122bf843e3dce4f4e23ab4790af4cd8f9a7c942ab68d8",
+    "data/raw/tej/prices/tej_adj_tpex_daily_20170701_20261020.csv.gz": "36de777a20e5fbb65f988eb48ec611839f5773bbd11e0c3c6673cce63269d6cd",
+    "data/raw/tej/prices/tej_adj_twse_daily_20170701_20261020.csv.gz": "2b8264e2c0c0cea235436ea1b998625f5d570705ac2a32c02b6dec03e61fc0a6",
+    "data/raw/tej/prices/tej_unadj_tpex_daily_20170701_20261020.csv.gz": "2bc0c8c52555459a43f7c2bb0254acefcf91eeb0d88c39d8691cecc46853e418",
+    "data/raw/tej/prices/tej_unadj_twse_daily_20170701_20261020.csv.gz": "4b23c021776eb221a0b7c2ab08b2ad02424bb41601006c05dd819f912d99c7f7"
   },
   "code_sha256": {
     "src/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -138,5 +142,6 @@
     "last_rebalance": "2026-10-13",
     "trainings": 35,
     "universe_tickers_ever": 1357
-  }
+  },
+  "note": "本版於未提交之工作目錄執行，程式版本以 code_sha256 識別；TEJ 股價檔雜湊值於 2026-11-23 補登（與執行時使用之檔案相同）。原始基準：outputs/research/thesis_2026-10-20（保留）。"
 }

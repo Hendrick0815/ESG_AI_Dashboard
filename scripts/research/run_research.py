@@ -507,6 +507,8 @@ def main():
             for f in fs:
                 h_.update(f.name.encode()); h_.update(sha256(f).encode())
             files[f"data/raw/{sub}/（合計 {len(fs)} 檔）"] = h_.hexdigest()
+    for f in sorted((ROOT / "data" / "raw" / "tej" / "prices").glob("*.csv.gz")):     # TEJ 股價（v2 起之價格來源）
+        files[str(f.relative_to(ROOT))] = sha256(f)
     for extra in [ROOT / "data" / "raw" / "twse_codes.csv", ROOT / "data" / "raw" / "yahoo_all" / "missing.txt", ROOT / "docs" / "parameter_trials.csv"]:
         if extra.exists():
             files[str(extra.relative_to(ROOT))] = sha256(extra)
@@ -517,6 +519,9 @@ def main():
             code[f] = sha256(ROOT / f)
     try:
         commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip() or None
+        dirty = subprocess.run(["git", "status", "--porcelain", "--", "src", "scripts"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+        if commit and dirty:     # 工作目錄有未提交的程式修改：commit 無法代表實際執行的程式，改以 code_sha256 識別
+            commit = None
     except Exception:
         commit = None
     import sklearn, scipy, statsmodels

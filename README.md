@@ -82,8 +82,8 @@ data/
 目前 `data/raw/tej/` 有 2022/12 ～ 2026/06 共 8 期 TESG 評等（半年一期，公告日約每年 5 月初、11 月初），
 約 1,850～1,970 家公司。回測時每個調倉日只會用到「當時最新已公告」的那一期。
 之後有新一期，從 TEJ Pro 匯出（.xlsx 直接放即可）丟進 `data/raw/tej/`，重複的期別會自動去除。
-在 2022-11-01 以前的回測期間沒有 ESG：AI+ESG 等同單純 AI、單純 ESG 持有現金（畫面會提示）。
-進階設定中的「用最新一期回填」可以當對照組，但它有前視偏差，不能當正式結果。
+在 2022-11-01 以前的回測期間沒有 ESG：AI+ESG 等同單純 AI、規則式 ESG 篩選持有現金（畫面會提示）。
+進階設定中的「用最新一期回填」可以當對照組，但它有前視偏差，不能當研究結果。
 
 ## 方法摘要
 
@@ -92,12 +92,12 @@ data/
 | 股票池 | 預設近 20 個交易日平均成交金額前 300 大（含市值前 50 大，清單存在 data/processed/universe.csv）；`--universe core` 只抓前 50 大；`--universe tej` 為所有有 TEJ 評等的上市櫃普通股（排除 ETF、權證、特別股） |
 | 特徵 | 5/20/60 日動能、20 日波動、月線／季線乖離、見頂訊號（距 20 日高點跌幅與天數、連跌天數、量能比、短期反轉）、本益比、淨值比、殖利率（＋本機財報欄位） |
 | 產業 | 不限制產業檔數；產業趨勢加分（INDUSTRY_TREND_WEIGHT）、產業特徵、產業趨勢濾網、產業上限都可在 config 開啟（回測都較差，預設關閉） |
-| 回測期間 | 訓練資料從 2017-08 起（config.HISTORY_START）；樣本外績效從 2022-11-01 起（config.BACKTEST_START，TEJ ESG 第一次公告日） |
+| 回測期間 | 訓練資料從 2017-08 起（config.HISTORY_START）；回測績效從 2022-11-01 起（config.BACKTEST_START，TEJ ESG 第一次公告日） |
 | 預測目標 | 未來 10 個交易日報酬減去當天全體平均 |
 | 模型 | Random Forest（預設）／XGBoost／兩者平均，**滾動式訓練**（每 3 次調倉、約 6 週重訓），只用訓練當天已知結果的樣本 |
 | 單純 AI | 預測分數最高的 N 檔（預設 **20 檔**，與 src/config.py 的 DEFAULT_TOP_N 相同） |
 | AI+ESG | (1−w)×AI 排名 + w×TESG 排名（w 預設 0.3）。原規劃的爭議分數、EPS 排除條件因資料沒有對應欄位，程式不會套用 |
-| 單純 ESG（論文稱「規則式 ESG 篩選投組」） | TESG 總分最高的 N 檔 |
+| 規則式 ESG 篩選 | TESG 總分最高的 N 檔 |
 | 風險控制 | ① 不買跌破年線（200 日均線）的股票 ② 不買近 60 日波動最高的 20% ③ 加權指數跌破年線時持股減半（每天收盤檢查）。預設關閉 |
 | 回測 | **固定每 2 週**調倉（從回測起點起算、固定同一個星期幾，遇假日順延；逐期股票池回測相同）：調倉日收盤後形成訊號、下一交易日開盤成交、持有期間權重漂移；等權或集中加權；**一律扣**手續費 0.1425%×2 + 證交稅 0.3% |
 | 績效 | 累積／幾何年化報酬、年化波動、Sharpe（扣無風險利率 1%）、最大回撤、日報酬平均與變異數 |
@@ -113,7 +113,7 @@ python scripts/backfill_daily_quotes.py 2017-07-03 2026-10-20 tpex     # 上櫃�
 python scripts/fetch_yahoo_all.py data/raw/twse_codes.txt              # 上市股票 Yahoo 日資料（缺的寫入 missing.txt）
 python scripts/fetch_finmind_twse.py --file data/raw/yahoo_all/missing.txt   # Yahoo 未收錄（多為已下市）的上市股票
 python scripts/research/check_twse_coverage.py                         # 上市股票涵蓋率檢查（有缺漏會停止）
-python scripts/research/run_research.py --data-snapshot 5c2c22c        # 逐期股票池＋正式回測＋所有表格檔
+python scripts/research/run_research.py --data-snapshot 5c2c22c        # 逐期股票池＋主要分析回測＋所有表格檔
 python scripts/research/build_report.py                                # 由表格檔產生論文 Word／PDF
 python scripts/research/capture_web.py                                 # 網站「逐期股票池回測」頁截圖（需 playwright）
 python scripts/research/build_report.py                                # 再產生一次，表格換成網站截圖

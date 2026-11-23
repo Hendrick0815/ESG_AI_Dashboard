@@ -33,14 +33,14 @@ labels = portfolio_labels(names)
 
 st.title("📈 策略回測")
 demo_warning()
-st.caption(f"樣本外期間 {res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}，共 {len(res.rebalance_dates)} 次調倉（每 {config.REBALANCE_WEEKS} 週一次）")
+st.caption(f"回測期間 {res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}，共 {len(res.rebalance_dates)} 次調倉（每 {config.REBALANCE_WEEKS} 週一次）")
 show_notes(res.notes)
 
 tab1, tab2, tab4, tab5 = st.tabs(["績效比較", "歷次持股", "換股與成本", "方法說明"])
 
 with tab1:
     r0, r1 = res.test_start, res.latest_date
-    options = {"全部樣本外期間": (r0, r1)}
+    options = {"全部回測期間": (r0, r1)}
     for label, years in [("近 1 年", 1), ("近 3 年", 3), ("近 5 年", 5)]:
         a0 = r1 - pd.DateOffset(years=years)
         if a0 > r0:
@@ -58,13 +58,13 @@ with tab1:
         a, b = pd.Timestamp(rng[0]), pd.Timestamp(rng[1])
     else:
         a, b = options[choice]
-    full = choice == "全部樣本外期間"
+    full = choice == "全部回測期間"
     sub_ret = res.returns if full else res.returns[(res.returns["date"] > a) & (res.returns["date"] <= b)]
     if sub_ret.empty:
         st.info("這段期間沒有資料")
         st.stop()
     sub_perf = res.perf if full else performance_table(sub_ret)
-    title = "全部樣本外期間 累積淨值" if full else f"累積淨值（{a:%Y-%m-%d} ～ {b:%Y-%m-%d}）"
+    title = "全部回測期間 累積淨值" if full else f"累積淨值（{a:%Y-%m-%d} ～ {b:%Y-%m-%d}）"
     st.plotly_chart(charts.nav_chart(sub_ret, labels, title, log_y=log_y), width="stretch")
     tbl = format_table(sub_perf)
     tbl["投組"] = tbl["投組"].map(lambda p: labels.get(p, p))
@@ -228,7 +228,7 @@ with tab5:
 - 每 {config.RETRAIN_EVERY} 次調倉（約 {config.RETRAIN_EVERY * config.REBALANCE_WEEKS} 週）重新訓練一次，只用「在訓練當天已經知道結果」的樣本
   （樣本日期 ≤ 調倉日往前 {params.hold_days} 個交易日）；訓練樣本每 5 個交易日取一天。
 - 缺值用訓練集的中位數補，不會用到測試期資訊。
-- **訓練資料從 {config.HISTORY_START[:7]} 起；樣本外績效從 {res.test_start:%Y-%m-%d} 起**（TEJ ESG 評等第一次公告日），
+- **訓練資料從 {config.HISTORY_START[:7]} 起；回測績效從 {res.test_start:%Y-%m-%d} 起**（TEJ ESG 評等第一次公告日），
   三個策略從同一天開始比較才公平。在那之前的資料只拿來訓練模型，不計入績效。
 
 #### 三種策略
@@ -257,13 +257,13 @@ with tab5:
 
 代價：持股集中在高波動股票，最大回撤約 −40%，比大盤深；調倉次數多，交易成本也較高（已反映在報酬裡）。
 
-#### 風險控制（選用）{"　✅ 目前開啟" if rc else "　目前關閉"}
+#### 風險控制（選用；探索性補充分析，不取代主策略）{"　✅ 目前開啟" if rc else "　目前關閉"}
 側邊欄勾選後會加上三條規則，可降低回撤，但報酬也會明顯變低：
 1. **不買跌破年線的股票**：收盤價在 {config.STOCK_TREND_MA} 日均線之下就不買。
 2. **不買最震盪的 20%**：近 60 日波動最高的 {1 - config.VOL_CAP_QUANTILE:.0%} 不買。
 3. **大盤跌破年線持股減半**：加權指數在 {config.MARKET_MA} 日均線之下時，持股降為 {config.MARKET_WEAK_EXPOSURE:.0%}、其餘放現金。
 
-#### 短期轉弱減碼（選用）{"　✅ 目前開啟" if params.pullback_control else "　目前關閉"}
+#### 短期轉弱減碼（選用；探索性補充分析，不取代主策略）{"　✅ 目前開啟" if params.pullback_control else "　目前關閉"}
 「跌破年線」反應較慢，牛市中的急跌回檔常常不會觸發。勾選後，加權指數收盤價距近 {config.PULLBACK_WINDOW} 個交易日最高收盤價
 跌幅超過 {-config.PULLBACK_DD:.0%} 時，持股降為 {config.PULLBACK_EXPOSURE:.0%}，回到 {-config.PULLBACK_DD:.0%} 以內恢復滿倉（每天收盤檢查、只調整比例不換股）。
 可減少回檔時的虧損與最大回撤，代價是報酬降低、換倉次數增加；可與上面的風險控制同時使用，取較低的持股比例。
@@ -277,6 +277,6 @@ with tab5:
 
 #### 限制
 - 股票池是用「最近」的成交金額挑出的目前上市櫃公司，存在存活者偏差與前視偏差（過去冷門、現在才熱門的股票也被納入）；以收盤價成交為假設，未考慮滑價。
-- 樣本外期間從 2022-11-01 起，主要是 AI／電子股大多頭；預設參數是在 2018 年起的期間比較後選出的，未來報酬很可能比回測低。
+- 回測期間從 2022-11-01 起，主要是 AI／電子股大多頭；預設參數是在 2018 年起的期間比較後選出的，未來報酬很可能比回測低。
 - 2017～2022 年的本益比／淨值比若還沒補齊，該期間以中位數代替（每日排程會自動補）。
 """)

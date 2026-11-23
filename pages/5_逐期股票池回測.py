@@ -1,5 +1,5 @@
 """逐期股票池回測：讀取 scripts/research/run_research.py 與 build_report.py 的輸出（逐期股票池、含下市股），
-顯示正式回測的表格與圖（與專題報告第三、四章相同）。數字固定在資料截點，不會隨網站每天更新而改變。"""
+顯示本研究主要結果的表格與圖（與專題報告第三、四章相同）。數字固定在資料截點，不會隨網站每天更新而改變。"""
 import html
 import json
 from pathlib import Path
@@ -28,17 +28,23 @@ setup_page("逐期股票池回測", "🧪")
 st.title("🧪 逐期股票池回測")
 
 if not TABLES.exists():
-    st.info("尚未產生正式回測結果。請先執行 `python scripts/research/run_research.py` 與 "
+    st.info("尚未產生本研究主要結果。請先執行 `python scripts/research/run_research.py` 與 "
             "`python scripts/research/build_report.py`。")
     st.stop()
 
 tables = {t["key"]: t for t in json.loads(TABLES.read_text(encoding="utf-8"))}
-st.caption(f"資料截點 {CFG['data_cutoff']}｜評估期 {CFG['periods']['exploratory_evaluation'][0]} ～ "
-           f"{CFG['periods']['exploratory_evaluation'][1]}（探索性歷史回測期）｜每 {CFG.get('rebalance_weeks', 2)} 週調倉｜"
+st.caption(f"資料截點 {CFG['data_cutoff']}｜探索性歷史回測期 {CFG['periods']['exploratory_evaluation'][0]} ～ "
+           f"{CFG['periods']['exploratory_evaluation'][1]}｜每 {CFG.get('rebalance_weeks', 2)} 週調倉｜"
            + ("T 日收盤後形成訊號、T+1 日開盤成交｜股價：TEJ 除權息調整" if CFG.get("execution") == "next_open" else "調倉日收盤成交"))
-st.info("本頁為固定設定的正式回測結果：每個調倉日以「當時」成交金額前 300 大重建股票池，並保留之後下市的股票，"
+_claim = ROOT / "outputs" / "research" / CFG["run_id"] / "report" / "claim.txt"
+if _claim.exists():
+    import re as _re
+    _t = _re.sub(r"([\u4e00-\u9fff])([A-Za-z0-9])", r"\1 \2", _claim.read_text(encoding="utf-8"))
+    _t = _re.sub(r"([A-Za-z0-9])([\u4e00-\u9fff])", r"\1 \2", _t)
+    st.markdown("**本研究主張**：" + _t)
+st.info("本頁為本研究之主要結果（固定設定、探索性歷史回測）：每個調倉日以「當時」成交金額前 300 大重建股票池，並保留之後下市的股票，"
         "以避免後見之明偏誤；設定固定在 research_config.json，數字不隨每日資料更新而改變。"
-        "評估期曾參與模型與參數選擇，屬探索性歷史回測，p 值僅作樣本內描述，不代表策略已被驗證。"
+        "探索性歷史回測期曾參與模型與參數選擇，屬探索性歷史回測，p 值僅作樣本內描述，不代表策略已被驗證。"
         "其他頁面以「目前」前 300 大回測，報酬會因後見之明偏誤而偏高，兩者數字不同。")
 
 
@@ -149,7 +155,7 @@ with tabs[0]:
 with tabs[1]:
     show_table("4-1")
     show_figure("4-1", "圖 4-1 累積淨值（對數刻度）", nav_figure(),
-                "起點 = 1（評估期第一天）；策略已扣手續費與證交稅。資料來源：臺灣證券交易所、證券櫃檯買賣中心、台灣經濟新報（TEJ）、Yahoo Finance、FinMind；本研究整理。")
+                "起點 = 1（探索性歷史回測期第一天）；策略已扣手續費與證交稅。資料來源：臺灣證券交易所、證券櫃檯買賣中心、台灣經濟新報（TEJ）、Yahoo Finance、FinMind；本研究整理。")
     show_table("4-2")
     show_table("4-3")
     show_figure("4-2", "圖 4-2 各調倉日持股加權 TESG 與 E／S／G 分數", esg_figure(),

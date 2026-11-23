@@ -1,9 +1,10 @@
 ﻿項目,資料可得時點,使用時點,規則,程式位置
-股價、成交量（技術面與見頂訊號特徵）,T 日收盤,T 日收盤後,只用 T 日（含）以前的收盤價與成交量,src/features.py add_technical()（第 78–116 行）
-估值（本益比、股價淨值比、殖利率）,證交所每日盤後公布；本研究取每月底,依資料日期 ≤ T 對齊,as-of 合併，只取 T 日以前最新一筆,src/features.py asof_merge()（第 150–173 行）
-ESG（TEJ TESG）,TESG 評等公告日,公告日 ≤ T,as-of 合併，只取 T 日以前已公告的最新一期,src/features.py asof_merge()；src/loaders/tej.py（公告日欄位）
-模型訓練樣本,樣本日 ≤ T 往前 10 個交易日,—,訓練樣本的 10 日未來報酬在 T 日收盤前已全部實現,src/models.py walk_forward()（第 101–144 行，cutoff 第 117 行）
-調倉訊號日（T）,每 2 週固定同一星期幾，遇休市順延,T 日收盤後,以上資料算出分數、排名與目標權重,src/backtest.py rebalance_schedule()（第 38 行起）；src/pipeline.py
-成交日（T+1）,—,T+1 日開盤,以 T+1 開盤價（TEJ 除權息調整）換股，並扣手續費、證交稅,src/backtest.py _simulate_next_open()（第 269 行起）
-報酬起算,—,T+1 日開盤,舊持股賺 T 收盤→T+1 開盤；新持股賺 T+1 開盤→收盤，之後收盤對收盤,src/backtest.py overnight_returns()（第 208 行）、_simulate_next_open()
-比較基準（ETF、加權指數）,—,—,收盤對收盤日報酬（Yahoo Finance 還原收盤價）,src/backtest.py benchmark_returns()
+股價、成交量（技術面）,T 日收盤,T 日收盤後,只用 T 日（含）以前之收盤價與成交量,src/features.py add_technical()（第 78–116 行）
+估值（本益比、淨值比、殖利率）,證交所盤後公布,資料日 ≤ T,as-of 合併，只取 T 日以前最新一筆,src/features.py asof_merge()（第 150–173 行）
+ESG（TEJ TESG）,評等公告日,公告日 ≤ T,以「TESG評等公告日」為可用日，as-of 合併,src/features.py asof_merge()（第 150–173 行）；src/loaders/tej.py
+模型訓練樣本,樣本日之 10 日後,樣本日 ≤ T−10,訓練樣本之未來 10 日報酬於 T 日收盤前已實現,src/models.py walk_forward()（第 101–144 行），cutoff 第 117 行
+調倉訊號日（T）,—,T 日收盤後,每 2 週固定星期，遇休市順延；算出分數與目標權重,src/backtest.py rebalance_schedule()（第 38–53 行）
+成交（T+1）,—,T+1 日開盤,以 TEJ 除權息調整後開盤價換股，並於開盤扣手續費、證交稅,src/backtest.py _simulate_next_open()（第 269–325 行）
+報酬起算,—,T+1 日開盤,舊持股：T 收盤→T+1 開盤；新持股：T+1 開盤→收盤；其後收盤對收盤,src/backtest.py overnight_returns()（第 208–216 行）
+股價來源,TEJ 盤後,—,TEJ 除權息調整後開盤價、收盤價取代混合來源,src/research/exchange.py apply_tej_prices()（第 291–308 行）
+比較基準（ETF、指數）,當日收盤,—,收盤對收盤日報酬（還原收盤價）,src/backtest.py benchmark_returns()（第 373–385 行）
