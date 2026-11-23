@@ -31,6 +31,7 @@ NO_SIDEBAR = 'section[data-testid="stSidebar"], [data-testid="stSidebarCollapsed
 # (檔名, 頁面路徑, 動作)；動作：("tab", 分頁名稱)、("type", 標籤文字, 輸入值)、("radio", 選項文字)
 SHOTS = [
     ("home_sidebar", "", [("sidebar",)]),
+    ("sidebar_exploratory", "", [("sidebar",), ("scrollto", "短期轉弱減碼（探索性補充分析")]),
     ("home", "", []),
     ("trend", "大盤趨勢預測", []),
     ("backtest_perf", "策略回測", [("tab", "績效比較")]),
@@ -88,6 +89,9 @@ def shoot(pg, base, name, path, actions):
         elif a[0] == "tab":
             pg.get_by_role("tab", name=a[1]).first.click()
             settle(pg)
+        elif a[0] == "scrollto":                  # 捲動到含指定文字的元素（例如側邊欄下方的選項）
+            pg.get_by_text(a[1], exact=False).first.scroll_into_view_if_needed()
+            time.sleep(1)
         elif a[0] == "radio":
             pg.get_by_text(a[1], exact=True).first.click()
             settle(pg)

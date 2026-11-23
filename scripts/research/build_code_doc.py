@@ -68,6 +68,35 @@ def compose(R: Report, pages: dict):
     R.new_section(fmt="decimal", start=1)
     ac.appendix_e_detail(R, OUT / "pages", None, figure_fn=lambda: ac.architecture_figure(OUT / "fig_arch.png"),
                          standalone=True)
+    repro_checklist(R)
+
+
+def repro_checklist(R):
+    """一頁可重現性清單（指導教授修訂指引 P3）：程式版本、資料截止日、資料檔雜湊、設定檔、執行指令、輸出檔與亂數種子。"""
+    import hashlib
+    run = OUT.parent
+    m = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+    c = m["config"]
+    sha = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()[:16]
+    R.h(1, "可重現性清單")
+    R.p("依下表即可取得與本研究相同之程式、設定與資料，並重建論文主要表格；雜湊值為 SHA-256 前 16 碼（完整值見 manifest.json 與 VERSION.md）。", indent=False, size=10.5)
+    df = m["data_files_sha256"]
+    keys = [k for k in df if "tej/prices" in k] + [k for k in df if "tesg" in k] + [k for k in df if "daily_quotes" in k] + \
+           [k for k in df if k.endswith("benchmarks.csv")]
+    rows = [
+        ["程式版本", f"GitHub Hendrick0815/ESG_AI_Dashboard，版本標籤 thesis-v2-2026-10-20（commit 375cfa0）；各程式檔雜湊見 manifest.json（{len(m['code_sha256'])} 個）"],
+        ["研究版本／資料截止日", f"{c['run_id']}／{c['data_cutoff']}（截止日後資料不納入）；原始基準 {c.get('baseline_run_id')} 保留"],
+        ["設定檔", f"research_config.json（SHA-256 {sha(run / 'research_config.json')}）"],
+        ["資料檔雜湊", "；".join(f"{k.split('/')[-1]} {v[:16]}" for k, v in [(k, df[k]) for k in keys])],
+        ["執行指令", "python scripts/research/run_research.py → run_research.py --test-yahoo → descriptive_stats.py → run_market_state_tests.py；"
+                     "文件：build_report.py → capture_web.py → build_report.py（版本已凍結，重現時請改用新 run_id）"],
+        ["輸出檔", f"outputs/research/{c['run_id']}/tables/*.csv（{len(list((run / 'tables').glob('*.csv')))} 個，雜湊見 VERSION.md）、manifest.json、report/ 下之論文與附件"],
+        ["亂數種子", f"隨機森林 random_state 42；numpy 全域與 permutation importance 種子 {c['random_seed']}；年化報酬區塊 bootstrap 種子 42（區塊 20 日、2,000 次）"],
+        ["執行環境", f"Python {m['python']}；" + "、".join(f"{k} {v}" for k, v in m["packages"].items())],
+    ]
+    R.caption("表　可重現性清單")
+    R.table(["項目", "內容"], rows, [2.6, 9.4], "ll", size=9.5)
+    R.note("核對方式：新產出之 tables/*.csv 雜湊值與 VERSION.md 一致，即表示重建結果與論文相同。")
 
 
 def build(pages):

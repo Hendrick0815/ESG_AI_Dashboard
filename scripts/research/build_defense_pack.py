@@ -44,37 +44,69 @@ def main():
     R.h(1, "答辯與重現資料")
     R.p(f"研究題目：{B.TITLE}｜研究版本 {CFG['run_id']}（凍結於 2026-11-23，版本標籤 thesis-v2-2026-10-20）｜資料截點 {B.cut}", indent=False, size=10, after=2)
     R.h(2, "一、一頁答辯摘要")
-    R.p("**研究主張：**" + B.claim_txt(), indent=False, size=10, after=2)
-    R.bullets([
-        f"**樣本與期間：**臺灣上市櫃普通股，每個調倉日依當時近 20 日成交金額重建前 300 大（含之後下市股票）；"
-        f"探索性歷史回測期 {B.start_eval}～{B.cut}（{B.n_days} 個交易日、{B.n_rb} 次調倉）。此期間曾參與模型與參數選擇，非乾淨的樣本外驗證期。",
-        "**策略：**隨機森林預測未來 10 日相對報酬；單純 AI、AI+ESG（AI 排名 70%＋TESG 排名 30%）、規則式 ESG 篩選，各取 Top 20 等權，每 2 週調倉。",
-        "**交易與資料：**T 日收盤後形成訊號、T+1 日開盤成交；TEJ 除權息調整後股價；扣手續費與證交稅，另做 10～30 bps 滑價敏感度。",
-        "**檢定：**Newey-West（HAC）標準誤、移動區塊 bootstrap 信賴區間；p 值僅作樣本內描述，未做多重比較校正。",
-    ], size=10)
-    R.caption("表 1　主要結果（探索性歷史回測期）")
+    F = 10      # 字級（本頁須容納於一頁）
+    from report_lib import spacing, rich, add_text
+    from docx.shared import Pt
+
+    def CB(items, size=F):          # 行距較緊之項目符號（本頁專用）
+        for it in items:
+            if not it:
+                continue
+            q = R.doc.add_paragraph()
+            spacing(q, 0, 1, 1.25, left=Pt(18), hanging=Pt(12))
+            add_text(q, "• ", size=size)
+            rich(q, it, size=size)
+
+    def HP(text):
+        q = R.doc.add_paragraph()
+        spacing(q, 4, 1, 1.25)
+        rich(q, text, size=F)
+    HP("**研究主張：**" + B.claim_txt())
+    HP("**1. 研究貢獻**")
+    CB([
+        "建立一套可重現的 AI 加 ESG 選股回測架構：逐期重建股票池（含下市股）、資料依可得日對齊、T+1 開盤成交、TEJ 除權息調整價格，設定與資料版本凍結並可由程式重跑。",
+        "以同一架構誠實比較 AI、ESG 篩選與市售 ESG ETF，並量化股票池建構、成交時點與交易成本對結論的影響。",
+    ])
+    HP(f"**2. 主要發現**（探索性歷史回測期 {B.start_eval}～{B.cut}，{B.n_days} 個交易日）")
     rows = []
     for k in B.ORDER:
         if k not in t41.index:
             continue
         r = t41.loc[k]
         x = B.d46(k, "00850") if k in B.STR else None
-        rows.append([k, pct(r["年化報酬"]), num(r["Sharpe"]), pct(r["最大回撤"]), num(r["Beta"]) if B.pd.notna(r.get("Beta")) else "—",
-                     pv(x["p"]) if x is not None else "—"])
-    R.table(["投組", "年化報酬", "Sharpe", "最大回撤", "Beta", "相對 00850 p 值"], rows, [3.0, 1.8, 1.4, 1.8, 1.2, 2.2], "lrrrrr", size=9.5)
-    R.note("註：p 值為日報酬差之 Newey-West 檢定（未校正）；無風險利率年 1%；加權指數不含股利。資料來源：TEJ、證交所、櫃買中心、Yahoo Finance、FinMind。")
-    R.bullets([
-        f"**AI 相對 ETF 差異不顯著：**單純 AI 相對 00850 p = {pv(x_ai['p'])}、AI+ESG p = {pv(x_ae['p'])}；年化報酬 95% CI {pct(a['年化報酬95%CI下限'], 0)}～{pct(a['年化報酬95%CI上限'], 0)}。",
-        f"**後見之明偏誤：**以資料截點當時前 300 大回推股票池，單純 AI 年化 {pct(B.cu.loc['單純 AI', '年化報酬'])}（網站展示頁即此做法）。" if B.cu is not None else "",
-        f"**成交時點敏感：**若能於訊號日收盤成交，單純 AI 年化 {pct(ce.get('單純 AI'))}，較 T+1 開盤高約 {abs(ce.get('單純 AI') - a['年化報酬']) * 100:.0f} 個百分點。" if len(ce) else "",
-        f"**ESG 價值偏向風險面：**規則式 ESG 篩選 Beta {num(e['Beta'])}、最大回撤 {pct(e['最大回撤'])}；AI+ESG 持股加權 TESG {num(B.t410.loc['AI+ESG', 'esg_total'], 1)}，高於單純 AI 的 {num(B.t410.loc['單純 AI', 'esg_total'], 1)}。",
-    ], size=10)
+        rows.append([k, pct(r["年化報酬"]), num(r["Sharpe"]), pct(r["最大回撤"]), pv(x["p"]) if x is not None else "—"])
+    R.table(["投組", "年化報酬", "Sharpe", "最大回撤", "相對 00850 p 值"], rows, [3.0, 1.8, 1.4, 1.8, 2.2], "lrrrr", size=9)
+    CB([
+        f"AI 與 ETF 差異不顯著（單純 AI p = {pv(x_ai['p'])}、AI+ESG p = {pv(x_ae['p'])}）；AI+ESG 持股加權 TESG {num(B.t410.loc['AI+ESG', 'esg_total'], 1)}，高於單純 AI 的 {num(B.t410.loc['單純 AI', 'esg_total'], 1)}；規則式 ESG 篩選 Beta {num(e['Beta'])}、回撤最小。",
+        (f"以資料截點當時前 300 大回推股票池，單純 AI 年化 {pct(B.cu.loc['單純 AI', '年化報酬'])}（後見之明偏誤）；" if B.cu is not None else "")
+        + (f"若以訊號日收盤成交則為 {pct(ce.get('單純 AI'))}；每邊 20 bps 滑價即落後 00850。" if len(ce) else ""),
+    ])
+    HP("**3. 不能主張的內容**")
+    CB([
+        "不能主張 AI 或 AI+ESG 優於 ETF、策略有效或具顯著超額報酬；p 值僅作樣本內描述，且未做多重比較校正。",
+        "探索性歷史回測期曾參與模型與參數選擇，不是樣本外驗證；結果不代表未來可實現報酬。",
+        "大盤狀態特徵與短期轉弱減碼為事後探索性補充分析，不取代主策略；網站展示頁（現存股票池）不是研究結果。",
+    ])
+    HP("**4. 研究限制**")
+    CB([
+        "參數選擇與回測期重疊；停牌期間假設價格不變仍可成交；未考慮開盤價格衝擊與容量限制。",
+        "TEJ TESG 自 2022-11 起僅 8 期；ETF 歷史成分無法取得；加權指數不含股利。",
+    ])
+    HP("**5. 未來樣本外驗證計畫**")
+    CB([
+        "凍結版本 thesis-v2-2026-10-20 之模型與規則，自 2026-10-21 起每 2 週記錄一次，至少追蹤 1 年（約 26 次調倉）。",
+        "事先只指定一項主要檢定：AI+ESG 相對 00850 日報酬差（Newey-West，雙尾 5%）；結果不論顯著與否皆完整報告（詳見第五節）。",
+    ])
     R.page_break()
 
     # ======================= 二、預期問答
     R.h(2, "二、預期問答")
     s20 = sl[(sl["slippage_bps"] == 20) & (sl["投組"] == "單純 AI")]
     qa = [
+        ("修訂後的報酬比上一版低，是否代表研究失敗？",
+         "本研究發現績效對股票池、成本與資料時點敏感，因此我們已把動態股票池、下市股票、T+1 開盤成交、交易成本與統計檢定納入；"
+         + (f"單純 AI 年化報酬由原始基準的 {pct(b41.loc['單純 AI', '年化報酬'])} 修正為 {pct(a['年化報酬'])}。" if b41 is not None else "")
+         + "目前結果屬探索性證據，下一步將以凍結參數後的新資料進行樣本外追蹤。我們不為維持高報酬而淡化偏誤。"),
         ("評估期間為何不能稱為樣本外？",
          "模型種類、持股數、調倉頻率與特徵是在涵蓋 2022-11 之後的資料上比較後選定（表 3-9），此期間已間接影響設定，因此稱為「探索性歷史回測期」，p 值只作樣本內描述。真正的樣本外檢驗留待凍結參數後的新資料（第五節）。"),
         ("AI 報酬點估計與 ETF 接近，為何不說 AI 有效？",
