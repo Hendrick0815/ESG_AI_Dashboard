@@ -82,6 +82,9 @@ HOLD_DAYS = 10                  # 模型預測未來 10 個交易日（約 2 週
 # 調倉日：'calendar' = 以回測起點為基準，每 REBALANCE_WEEKS 週固定同一天（遇假日順延到下一個交易日）；
 #         'trading_days' = 每 HOLD_DAYS 個交易日（逐期股票池回測使用，見 research_config.json）
 REBALANCE_MODE = "calendar"
+# 成交時點：next_open = T 日收盤後形成訊號、T+1 日開盤成交（隔夜報酬歸舊持股、當日報酬歸新持股）；
+#          same_close = 調倉日收盤成交（舊作法，僅供對照）。價格表沒有開盤價時自動退回 same_close。
+EXECUTION = "next_open"
 REBALANCE_WEEKS = 2
 MIN_TRAIN_DAYS = 250            # 至少一年訓練資料；資料不足時改用前 50%
 

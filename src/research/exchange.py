@@ -271,3 +271,38 @@ def universe_summary(prices: pd.DataFrame, elig: pd.DataFrame, dates) -> pd.Data
                      "min_avg_value": float(e["avg_value"].min()) if len(e) else np.nan,
                      "later_delisted": int((last_day.reindex(e["ticker"]) < end - pd.Timedelta(days=10)).sum())})
     return pd.DataFrame(rows)
+
+
+TEJ_PRICE_DIR = ROOT / "data" / "raw" / "tej" / "prices"
+
+
+def load_tej_prices(end=None, pdir: Path = TEJ_PRICE_DIR) -> pd.DataFrame:
+    """TEJ 除權息調整後日股價（data/raw/tej/prices/tej_adj_*.csv.gz）：code,date,open,close,volume_k。"""
+    files = sorted(pdir.glob("tej_adj_*_daily_*.csv.gz"))
+    if not files:
+        raise FileNotFoundError(f"找不到 TEJ 股價檔：{pdir}")
+    t = pd.concat([pd.read_csv(f, dtype={"code": str}, parse_dates=["date"]) for f in files], ignore_index=True)
+    t = t.drop_duplicates(["code", "date"]).sort_values(["code", "date"])
+    if end is not None:
+        t = t[t["date"] <= pd.Timestamp(end)]
+    return t
+
+
+def apply_tej_prices(px: pd.DataFrame, tej: pd.DataFrame):
+    """以 TEJ 除權息調整後價格取代研究價格表的收盤價、日報酬，並加入開盤價（同一套調整，供 T+1 開盤成交）。
+    交易日曆與成交金額（股票池排名用）沿用交易所／原資料；TEJ 沒有資料的列（例如掛牌前的空白列、長期停牌期間）
+    視為不可交易而刪除。回傳 (px, 摘要)。"""
+    t = tej.copy()
+    t["tej_ret"] = t.groupby("code")["close"].pct_change()
+    p = px.copy()
+    p["code"] = p["ticker"].str[:4]
+    m = p.merge(t[["code", "date", "open", "close", "tej_ret"]].rename(columns={"close": "tej_close"}),
+                on=["code", "date"], how="left")
+    miss = m["tej_close"].isna()
+    info = {"rows": int(len(m)), "rows_dropped_no_tej": int(miss.sum()),
+            "tickers_affected": int(m.loc[miss, "ticker"].nunique())}
+    m = m[~miss].copy()
+    m["close"] = m["tej_close"]
+    m["ret"] = m["tej_ret"]
+    m["ret_source"] = "TEJ"
+    return m.drop(columns=["code", "tej_close", "tej_ret"]), info

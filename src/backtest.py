@@ -16,7 +16,7 @@ from . import config
 
 STRATEGY_AI_ESG = "AI+ESG"
 STRATEGY_AI = "單純 AI"
-STRATEGY_ESG = "單純 ESG"
+STRATEGY_ESG = "規則式 ESG 篩選"
 STRATEGIES = [STRATEGY_AI_ESG, STRATEGY_AI, STRATEGY_ESG]
 STRATEGY_DESC = {
     STRATEGY_AI_ESG: "AI 預測排名與 ESG 排名加權",
@@ -205,10 +205,26 @@ def _quantize(x: float, step: float) -> float:
     return float(np.floor(x / step + 1e-9) * step) if step else x
 
 
+def overnight_returns(prices: pd.DataFrame) -> Optional[pd.DataFrame]:
+    """隔夜報酬寬表：t 日開盤價 ÷ t−1 日收盤價 − 1（開盤價與收盤價須為同一套除權息調整）。沒有開盤價欄位時回傳 None。"""
+    if prices is None or prices.empty or "open" not in prices.columns or prices["open"].notna().sum() == 0:
+        return None
+    p = prices.sort_values(["ticker", "date"])
+    prev = p.groupby("ticker")["close"].shift(1)
+    r = p["open"] / prev - 1
+    return pd.DataFrame({"date": p["date"].values, "ticker": p["ticker"].values, "r": r.values}) \
+        .pivot_table(index="date", columns="ticker", values="r").sort_index()
+
+
 def simulate(targets: Dict[pd.Timestamp, pd.Series], ret_wide: pd.DataFrame,
-             risk: Optional[RiskControl] = None) -> pd.DataFrame:
-    """targets：{調倉日: 目標權重（總和 ≤ 1，其餘為現金）}；ret_wide：日報酬寬表（index=date）。
-    回傳 date, ret, nav, turnover, cost, exposure（持股比例）。"""
+             risk: Optional[RiskControl] = None, open_ret: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """targets：{調倉日: 目標權重（總和 ≤ 1，其餘為現金）}；ret_wide：日報酬寬表（index=date，收盤對收盤）。
+    open_ret（隔夜報酬寬表）為 None：調倉日收盤成交（舊作法，僅供對照）。
+    open_ret 有值：T 日收盤後依當天以前的資料形成訊號，T+1 日開盤成交——T+1 當天舊持股先賺隔夜報酬
+    （T 收盤→T+1 開盤），開盤換股並扣成本，新持股再賺當日報酬（T+1 開盤→T+1 收盤），之後收盤對收盤。
+    回傳 date, ret, nav, turnover, cost, exposure（持股比例）；date 為報酬與成交發生的交易日。"""
+    if open_ret is not None:
+        return _simulate_next_open(targets, ret_wide, open_ret, risk)
     cols = ["date", "ret", "nav", "turnover", "cost", "exposure"]
     if not targets:
         return pd.DataFrame(columns=cols)
@@ -247,6 +263,65 @@ def simulate(targets: Dict[pd.Timestamp, pd.Series], ret_wide: pd.DataFrame,
         nav *= 1 + ret
         rows.append({"date": d, "ret": ret, "nav": nav, "turnover": turnover, "cost": cost,
                      "exposure": float(w.sum())})
+    return pd.DataFrame(rows, columns=cols)
+
+
+def _simulate_next_open(targets: Dict[pd.Timestamp, pd.Series], ret_wide: pd.DataFrame, open_ret: pd.DataFrame,
+                        risk: Optional[RiskControl] = None) -> pd.DataFrame:
+    cols = ["date", "ret", "nav", "turnover", "cost", "exposure"]
+    if not targets:
+        return pd.DataFrame(columns=cols)
+    days = ret_wide.index[ret_wide.index >= min(targets)]
+    w = pd.Series(dtype=float)
+    base = pd.Series(dtype=float)
+    nav, scale = 1.0, 1.0
+    pending = None                       # 前一交易日收盤後決定、今天開盤要執行的目標權重
+    rows = []
+    for d in days:
+        r_c = ret_wide.loc[d]
+        r_o = open_ret.loc[d] if d in open_ret.index else pd.Series(dtype=float)
+        g_on = g_in = 1.0
+        turnover = cost = 0.0
+        if pending is not None:
+            if not w.empty:              # 舊持股：昨收→今開
+                ro = r_o.reindex(w.index).astype(float).fillna(0.0)
+                g_on = float((w * (1 + ro)).sum() + (1 - w.sum()))
+                if g_on > 0:
+                    w = w * (1 + ro) / g_on
+            new = pending[pending > 0]
+            idx = w.index.union(new.index)
+            turnover = float((new.reindex(idx, fill_value=0) - w.reindex(idx, fill_value=0)).abs().sum() / 2)
+            cost = trading_cost(w, new)
+            w = new.copy()
+            pending = None
+            if not w.empty:              # 新持股：今開→今收；沒有開盤價（停牌）時視為整天報酬
+                rc = r_c.reindex(w.index).astype(float).fillna(0.0)
+                ro = r_o.reindex(w.index).astype(float).fillna(0.0)
+                ri = (1 + rc) / (1 + ro) - 1
+                g_in = float((w * (1 + ri)).sum() + (1 - w.sum()))
+                if g_in > 0:
+                    w = w * (1 + ri) / g_in
+        elif not w.empty:
+            rc = r_c.reindex(w.index).astype(float).fillna(0.0)
+            g_in = float((w * (1 + rc)).sum() + (1 - w.sum()))
+            if g_in > 0:
+                w = w * (1 + rc) / g_in
+        ret = g_on * (1 - cost) * g_in - 1
+        nav *= 1 + ret
+        rows.append({"date": d, "ret": ret, "nav": nav, "turnover": turnover, "cost": cost,
+                     "exposure": float(w.sum())})
+        # 今天收盤後：決定明天開盤要執行的部位
+        if d in targets:
+            base = targets[d]
+            pending = base * (risk.exposure(d) if risk else 1.0)
+            if risk is not None:
+                scale = risk.exposure(d)
+        elif risk is not None and not base.empty:
+            e = risk.exposure(d)
+            if abs(e - scale) >= risk.step - 1e-9:
+                cur = w / w.sum() * base.sum() if w.sum() > 0 else base
+                pending = cur * e
+                scale = e
     return pd.DataFrame(rows, columns=cols)
 
 

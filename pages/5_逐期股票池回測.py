@@ -34,9 +34,11 @@ if not TABLES.exists():
 
 tables = {t["key"]: t for t in json.loads(TABLES.read_text(encoding="utf-8"))}
 st.caption(f"資料截點 {CFG['data_cutoff']}｜評估期 {CFG['periods']['exploratory_evaluation'][0]} ～ "
-           f"{CFG['periods']['exploratory_evaluation'][1]}（探索性）｜每 {CFG.get('rebalance_weeks', 2)} 週調倉")
+           f"{CFG['periods']['exploratory_evaluation'][1]}（探索性歷史回測期）｜每 {CFG.get('rebalance_weeks', 2)} 週調倉｜"
+           + ("T 日收盤後形成訊號、T+1 日開盤成交｜股價：TEJ 除權息調整" if CFG.get("execution") == "next_open" else "調倉日收盤成交"))
 st.info("本頁為固定設定的正式回測結果：每個調倉日以「當時」成交金額前 300 大重建股票池，並保留之後下市的股票，"
         "以避免後見之明偏誤；設定固定在 research_config.json，數字不隨每日資料更新而改變。"
+        "評估期曾參與模型與參數選擇，屬探索性歷史回測，p 值僅作樣本內描述，不代表策略已被驗證。"
         "其他頁面以「目前」前 300 大回測，報酬會因後見之明偏誤而偏高，兩者數字不同。")
 
 

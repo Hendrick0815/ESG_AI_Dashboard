@@ -120,7 +120,7 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
     from .features import RISK_COLS
     snap_cols = ["date", "ticker"] + [c for c in ["esg_total", "controversy_score", "eps", "ind_gap_ma60", "ind_mom_20", "ind_mom_60", "ind_mom_120", *RISK_COLS]
                                       if c in panel.columns]
-    # 單純 ESG 不需要模型：沒有預測的股票也要納入
+    # 規則式 ESG 篩選不需要模型：沒有預測的股票也要納入
     snaps = panel[panel["date"].isin(pred_dates)][snap_cols].merge(wf.predictions, on=["date", "ticker"], how="left")
 
     targets: Dict[str, Dict[pd.Timestamp, pd.Series]] = {s: {} for s in bt.STRATEGIES}
@@ -146,6 +146,11 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
         pd.DataFrame(columns=["date", "portfolio", "ticker", "weight", "score"])
 
     ret_wide = full_panel.pivot_table(index="date", columns="ticker", values="ret_1d").sort_index()
+    open_ret = bt.overnight_returns(prices) if getattr(config, "EXECUTION", "same_close") == "next_open" else None
+    if open_ret is not None:
+        open_ret = open_ret.reindex(index=ret_wide.index, columns=ret_wide.columns)
+    elif getattr(config, "EXECUTION", "same_close") == "next_open":
+        notes.append("價格資料沒有開盤價，改以調倉日收盤成交計算。")
     risk = None
     if p.risk_control or p.pullback_control:
         if ds.benchmarks.empty or config.MARKET_INDEX not in set(ds.benchmarks["ticker"]):
@@ -160,7 +165,7 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
             why = "模型無預測" if strat == bt.STRATEGY_AI else "缺少 ESG 資料"
             notes.append(f"「{strat}」沒有可用的選股（{why}）。")
             continue
-        sim = bt.simulate(targets[strat], ret_wide, risk)
+        sim = bt.simulate(targets[strat], ret_wide, risk, open_ret=open_ret)
         sim["portfolio"] = strat
         series.append(sim[["date", "portfolio", "ret", "nav"]])
         trades.append(sim.loc[sim["turnover"] > 0, ["date", "portfolio", "turnover", "cost"]])
@@ -178,10 +183,10 @@ def run(ds: Dataset, p: Params, progress=None) -> Result:
                         .sort_values("importance", ascending=False).reset_index(drop=True))
 
     if info["esg_coverage"] == 0:
-        notes.append("目前沒有任何 ESG 資料對得上回測期間：AI+ESG 會等於單純 AI，單純 ESG 無法計算。")
+        notes.append("目前沒有任何 ESG 資料對得上回測期間：AI+ESG 會等於單純 AI，規則式 ESG 篩選無法計算。")
     elif info["esg_first_date"] is not None and info["esg_first_date"] > bt_start and not info["esg_static"]:
         notes.append(f"ESG 資料最早從 {pd.Timestamp(info['esg_first_date']).date()} 才有，"
-                     f"在那之前 AI+ESG 等同單純 AI、單純 ESG 為空手。補齊 TEJ 歷史各期評等即可改善。")
+                     f"在那之前 AI+ESG 等同單純 AI、規則式 ESG 篩選為空手。補齊 TEJ 歷史各期評等即可改善。")
 
     latest = holdings[holdings["date"] == last_day] if not holdings.empty else holdings
     import os

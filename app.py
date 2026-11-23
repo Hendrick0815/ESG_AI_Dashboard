@@ -9,7 +9,7 @@ from src import backtest as bt
 from src.backtest import STRATEGIES, STRATEGY_DESC
 from src.metrics import fmt_num, fmt_pct
 from src.ui import charts
-from src.ui.common import (HOLDINGS_NOTE, clear_caches, get_result, holdings_block, metric_cards, portfolio_labels, stock_info,
+from src.ui.common import (demo_warning, HOLDINGS_NOTE, clear_caches, get_result, holdings_block, metric_cards, portfolio_labels, stock_info,
                            require_prices, setup_page, show_notes, sidebar_data, sidebar_strategy)
 
 setup_page("首頁")
@@ -17,6 +17,7 @@ ds, mode, demo_set = sidebar_data()
 
 st.title("🌿 ESG-AI 台股選股平台")
 st.caption("AI 選股 × ESG 因子 × 台股大盤／ETF 比較｜左側選擇資料來源與策略參數，其他頁面會沿用同一組設定")
+demo_warning()
 
 # ------------------------------------------------------------------ 資料狀態
 with st.expander("📦 資料狀態與更新", expanded=ds.prices.empty):
@@ -144,7 +145,7 @@ st.caption("實線 = 策略；虛線 = 比較基準。詳細績效、持股比�
 st.divider()
 st.caption(
     "**免責聲明**：本站為學術專題成果，所有數字均為歷史資料的回測結果，不代表未來績效，"
-    "也不構成任何投資建議。回測假設以收盤價成交，未考慮滑價、流動性與稅務個別差異；"
+    "也不構成任何投資建議。回測假設調倉日收盤後形成訊號、下一交易日開盤價成交，未考慮滑價、流動性與稅務個別差異；"
     "股票池僅含目前仍上市櫃的公司，存在存活者偏差。"
     "資料來源：Yahoo Finance（股價）、台灣證券交易所（清單與估值）、TEJ 台灣經濟新報（TESG 永續評等）。"
     + (f"　{config.SITE_NOTICE}" if config.SITE_NOTICE else ""))

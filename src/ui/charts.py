@@ -11,7 +11,7 @@ from ..backtest import STRATEGIES
 
 # 三個策略：實線＋分類色第 1–3 格。比較基準：各自固定的顏色＋不同虛線樣式，
 # 顏色和線型同時不同，四條 ETF／指數線即使交錯也分得出來（色盲或黑白列印時靠線型區分）。
-STRATEGY_COLORS = {"AI+ESG": "#2a78d6", "單純 AI": "#eb6834", "單純 ESG": "#1baf7a"}
+STRATEGY_COLORS = {"AI+ESG": "#2a78d6", "單純 AI": "#eb6834", "規則式 ESG 篩選": "#1baf7a", "單純 ESG": "#1baf7a"}
 BENCH_STYLES = {
     "^TWII":    ("#3f3e3b", "solid"),      # 加權指數：深灰實線（細），當作大盤參考線
     "0050.TW":  ("#4a3aa7", "dash"),       # 元大台灣50：紫

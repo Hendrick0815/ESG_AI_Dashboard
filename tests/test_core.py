@@ -490,3 +490,23 @@ def test_drop_incomplete_tail():
     assert cut == [days[-1] + pd.Timedelta(days=3)] and out["date"].max() == days[-1]
     out2, cut2 = drop_incomplete_tail(full)
     assert cut2 == [] and len(out2) == len(full)
+
+
+def test_simulate_next_open_execution():
+    """T 日收盤後形成訊號、T+1 開盤成交：T+1 只賺開盤→收盤，T 收盤→T+1 開盤的隔夜漲跌不歸新持股。"""
+    from src import backtest as bt, config
+    days = pd.bdate_range("2026-01-05", periods=4)
+    px = pd.DataFrame({"date": list(days) * 2, "ticker": ["A"] * 4 + ["B"] * 4,
+                       "open": [10, 11, 12, 12, 20, 20, 21, 22], "close": [10, 11.5, 12, 13, 20, 21, 21, 22]})
+    ret = px.pivot_table(index="date", columns="ticker", values="close").pct_change()
+    on = bt.overnight_returns(px)
+    assert abs(on.loc[days[1], "A"] - 0.1) < 1e-12            # 11 / 10 − 1
+    tg = {days[0]: pd.Series({"A": 1.0}), days[2]: pd.Series({"B": 1.0})}
+    sim = bt.simulate(tg, ret, open_ret=on).set_index("date")
+    c_buy = config.COMMISSION + getattr(config, "SLIPPAGE", 0.0)
+    assert sim.loc[days[0], "ret"] == 0 and sim.loc[days[0], "turnover"] == 0      # 訊號日不成交
+    assert abs(sim.loc[days[1], "ret"] - ((1 - c_buy) * 11.5 / 11 - 1)) < 1e-12   # 開盤 11 買進、收盤 11.5
+    # days[3]：A 先賺隔夜 12→12（0%），開盤賣 A 買 B（B 開盤 22、收盤 22）
+    assert sim.loc[days[3], "turnover"] == 1.0
+    old = bt.simulate(tg, ret)                                    # 舊作法（收盤成交）仍可用
+    assert len(old) == 4

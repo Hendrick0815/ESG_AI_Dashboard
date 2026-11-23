@@ -1,7 +1,7 @@
-"""論文正式結果產生器：依 research_config.json 重跑回測並輸出表 3-x、表 4-1～4-10 與所有中間檔。
+"""論文主要結果產生器：依 research_config.json 重跑回測並輸出表 3-x、表 4-1～4-10 與所有中間檔。
 
 執行（在專案根目錄）：
-    python scripts/research/run_research.py                 # 正式版本（設定檔中的 run_id）
+    python scripts/research/run_research.py                 # 主要分析（設定檔中的 run_id）
     python scripts/research/run_research.py --skip-long     # 略過 2019 年起的長期間對照（較快）
 輸出：outputs/research/<run_id>/
     manifest.json            版本紀錄（設定、資料檔 SHA-256、程式檔 SHA-256、Python 與套件版本、執行時間）
@@ -32,7 +32,7 @@ from src.metrics import performance_table                           # noqa: E402
 from src.research import analysis as an, exchange as ex, stats as rs  # noqa: E402
 from src.store import Dataset, load_dataset                          # noqa: E402
 
-LABEL = {"單純 AI": "單純 AI", "AI+ESG": "AI+ESG", "單純 ESG": "規則式 ESG 篩選", "^TWII": "加權指數",
+LABEL = {"單純 AI": "單純 AI", "AI+ESG": "AI+ESG", "單純 ESG": "規則式 ESG 篩選", "規則式 ESG 篩選": "規則式 ESG 篩選", "^TWII": "加權指數",
          "0050.TW": "0050", "00850.TW": "00850", "00878.TW": "00878"}
 ORDER = ["單純 AI", "AI+ESG", "規則式 ESG 篩選", "0050", "00850", "00878", "加權指數"]
 STRATS = ["單純 AI", "AI+ESG", "規則式 ESG 篩選"]
@@ -50,6 +50,7 @@ def apply_config(cfg: dict) -> None:
     config.HOLD_DAYS = cfg["hold_days"]
     config.REBALANCE_MODE = cfg.get("rebalance_mode", "calendar")       # 與網站相同：每 rebalance_weeks 週固定同一天調倉
     config.REBALANCE_WEEKS = cfg.get("rebalance_weeks", 2)
+    config.EXECUTION = cfg.get("execution", "same_close")             # next_open：T 日收盤訊號、T+1 開盤成交
     config.RETRAIN_EVERY = cfg["retrain_every_rebalances"]
     config.USE_PEAK_FEATURES = cfg["use_peak_features"]
     config.USE_INDUSTRY_FEATURES = cfg["use_industry_features"]
@@ -79,6 +80,8 @@ def build_dataset(cfg: dict, out: Path, test_yahoo: bool = False):
     t0 = time.time()
     if test_yahoo:
         q, px = yahoo_as_quotes(load_dataset("real"), cut)
+        if cfg.get("price_source", "exchange") == "tej":       # 與主要分析相同的 TEJ 價格與開盤價，只有股票池不同
+            px, _ = ex.apply_tej_prices(px, ex.load_tej_prices(end=cut))
     else:
         q = ex.load_quotes(end=cut)
         days_tp = q.loc[q["market"] == "TPEx", "date"].nunique()
@@ -97,6 +100,11 @@ def build_dataset(cfg: dict, out: Path, test_yahoo: bool = False):
         px = ex.apply_yahoo_returns(px, base0.prices[base0.prices["date"] <= cut])
         share = (px["ret_source"] == "Yahoo").mean()
         source += f"；現存 300 檔的日報酬改用 Yahoo 還原收盤價（占全部股票日資料 {share:.0%}），其餘股票（含已下市）用漲跌價差法"
+        if cfg.get("price_source", "exchange") == "tej":
+            px, tinfo = ex.apply_tej_prices(px, ex.load_tej_prices(end=cut))
+            source = ("股價與日報酬：台灣經濟新報（TEJ）除權息調整後日開盤價、收盤價（上市、上櫃、已下市、已下櫃普通股）；"
+                      "交易日曆與成交金額（股票池排名）沿用證交所／櫃買中心逐日行情、Yahoo Finance 與 FinMind；"
+                      f"TEJ 無資料而刪除的列 {tinfo['rows_dropped_no_tej']:,} 筆（{tinfo['tickers_affected']} 檔，多為掛牌前空白列或長期停牌）")
         print("價格來源：", source, flush=True)
         (out / "price_source.txt").write_text(source, encoding="utf-8")
     u = cfg["universe"]
@@ -116,7 +124,8 @@ def build_dataset(cfg: dict, out: Path, test_yahoo: bool = False):
     bench = base.benchmarks[base.benchmarks["date"] <= cut]
     esg = base.esg[base.esg["available_date"] <= cut]
     fin = base.financials[base.financials["available_date"] <= cut]
-    prices = px[px["ticker"].isin(ever)][["date", "ticker", "close", "volume"]].copy()
+    keep = ["date", "ticker", "close", "volume"] + (["open"] if "open" in px.columns else [])
+    prices = px[px["ticker"].isin(ever)][keep].copy()
     ds = Dataset(mode="research", prices=prices, benchmarks=bench, esg=esg, financials=fin,
                  listing=listing, notes=[], eligible=elig[["date", "ticker"]])
     return ds, px, elig, base
@@ -146,7 +155,7 @@ def ret_wide_of(res, start, end) -> pd.DataFrame:
     return w[[c for c in ORDER if c in w.columns]]
 
 
-def resimulate(res, ret_daily: pd.DataFrame, slippage: float) -> pd.DataFrame:
+def resimulate(res, ret_daily: pd.DataFrame, slippage: float, open_ret: pd.DataFrame = None) -> pd.DataFrame:
     """用同一組持股（不重新訓練）在不同滑價下重算三個策略的日報酬。"""
     old = config.SLIPPAGE
     config.SLIPPAGE = slippage
@@ -156,10 +165,25 @@ def resimulate(res, ret_daily: pd.DataFrame, slippage: float) -> pd.DataFrame:
         targets = {d: x.set_index("ticker")["weight"] for d, x in g.groupby("date")}
         for d in res.rebalance_dates:
             targets.setdefault(d, pd.Series(dtype=float))
-        sim = bt.simulate(dict(sorted(targets.items())), ret_daily)
+        sim = bt.simulate(dict(sorted(targets.items())), ret_daily, open_ret=open_ret)
         out[LABEL.get(strat, strat)] = sim.set_index("date")["ret"]
     config.SLIPPAGE = old
     return pd.DataFrame(out)
+
+
+def execution_timing_table(res, ret_daily: pd.DataFrame, open_ret, start, cut) -> pd.DataFrame:
+    """表 4-11 對照 3：同一組持股（不重新訓練），比較「調倉日收盤成交」與「T+1 開盤成交」的年化報酬，衡量成交時點的影響。"""
+    from src.metrics import performance
+    rows = []
+    for label, o in [("調倉日收盤成交（舊作法）", None), ("T+1 開盤成交（本研究）", open_ret)]:
+        if label.startswith("T+1") and o is None:
+            continue
+        R = resimulate(res, ret_daily, 0.0, o)
+        R = R[(R.index >= pd.Timestamp(start)) & (R.index <= pd.Timestamp(cut))]
+        for c in R.columns:
+            m = performance(R[c], config.RISK_FREE_RATE)
+            rows.append({"成交時點": label, "投組": c, "年化報酬": m["ann_return"], "Sharpe": m["sharpe"], "最大回撤": m["max_drawdown"]})
+    return pd.DataFrame(rows)
 
 
 def main():
@@ -244,7 +268,7 @@ def main():
                     "holdings_total": int(len(h))})
     chk = pd.DataFrame(chk)
     # 規則式 ESG 篩選的分數 = 當天以前已公告的最新 TESG；逐筆核對是否用到未來公告的評等
-    he = hold[hold["portfolio"] == "單純 ESG"]
+    he = hold[hold["portfolio"].isin(["單純 ESG", bt.STRATEGY_ESG])]
     bad = 0
     for d, g in he.groupby("date"):
         e_ok = esg[esg["available_date"] <= d].sort_values("available_date").drop_duplicates("ticker", keep="last").set_index("ticker")["esg_total"]
@@ -392,9 +416,12 @@ def main():
     full_ret = ds.prices.sort_values(["ticker", "date"]).copy()
     full_ret["r"] = full_ret.groupby("ticker")["close"].pct_change()
     ret_daily = full_ret.pivot_table(index="date", columns="ticker", values="r").sort_index()
+    open_ret = bt.overnight_returns(ds.prices) if config.EXECUTION == "next_open" else None
+    if open_ret is not None:
+        open_ret = open_ret.reindex(index=ret_daily.index, columns=ret_daily.columns)
     sens = []
     for s in cfg["slippage_grid"]:
-        R = resimulate(res, ret_daily, s)
+        R = resimulate(res, ret_daily, s, open_ret)
         R = R[(R.index >= start) & (R.index <= cut)]
         for c in R.columns:
             from src.metrics import performance
@@ -403,17 +430,32 @@ def main():
             sens.append({"slippage_bps": round(s * 1e4), "投組": c, "年化報酬": m["ann_return"], "Sharpe": m["sharpe"],
                          "相對00850年化差": d["ann_diff"], "相對00850_HAC_t": d["t"]})
     pd.DataFrame(sens).to_csv(tdir / "table_4_9b_slippage.csv", index=False)
+    execution_timing_table(res, ret_daily, open_ret, start, cut).to_csv(tdir / "table_4_11d_execution_timing.csv", index=False)
     # 存活者偏誤檢查：持股中「不在平台目前 300 檔名單」的股票，其持有期報酬與其他持股比較
     cur = set(base.prices["ticker"])
     hp = []
     rbl = list(rb)
+    days_all = ret_daily.index
+
+    def _next(d):                                   # d 之後的第一個交易日（T+1 開盤成交日）
+        k = days_all.searchsorted(d, side="right")
+        return days_all[k] if k < len(days_all) else None
+
     for i, d in enumerate(rbl):
-        e = rbl[i + 1] if i + 1 < len(rbl) else ret_daily.index[-1]
-        seg = ret_daily[(ret_daily.index > d) & (ret_daily.index <= e)]
+        e = rbl[i + 1] if i + 1 < len(rbl) else days_all[-1]
+        seg = ret_daily[(days_all > d) & (days_all <= e)]
+        d1, e1 = _next(d), _next(e)
         for _, r in hold[hold["date"] == d].iterrows():
-            x = seg[r["ticker"]] if r["ticker"] in seg.columns else pd.Series(dtype=float)
-            hp.append({"date": d, "portfolio": LABEL.get(r["portfolio"], r["portfolio"]), "ticker": r["ticker"],
-                       "period_ret": float((1 + x.fillna(0)).prod() - 1), "in_current_top300": r["ticker"] in cur})
+            t = r["ticker"]
+            x = seg[t] if t in seg.columns else pd.Series(dtype=float)
+            g = float((1 + x.fillna(0)).prod())
+            if open_ret is not None and t in open_ret.columns and d1 is not None:
+                # 持有期間 = T+1 開盤 → 下次調倉的 T+1 開盤：扣掉 d1 的隔夜段，加上 e1 的隔夜段
+                g /= 1 + (open_ret.at[d1, t] if pd.notna(open_ret.at[d1, t]) else 0.0)
+                if e1 is not None and pd.notna(open_ret.at[e1, t]):
+                    g *= 1 + open_ret.at[e1, t]
+            hp.append({"date": d, "portfolio": LABEL.get(r["portfolio"], r["portfolio"]), "ticker": t,
+                       "period_ret": g - 1, "in_current_top300": t in cur})
     hp = pd.DataFrame(hp)
     hp.to_csv(out / "holding_period_returns.csv", index=False)
     hp.groupby(["portfolio", "in_current_top300"])["period_ret"].agg(["count", "mean", "median"]).to_csv(tdir / "table_4_2b_survivorship_split.csv")

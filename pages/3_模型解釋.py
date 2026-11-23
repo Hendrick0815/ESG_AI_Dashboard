@@ -10,7 +10,7 @@ from src.features import TECH_LABELS
 from src.metrics import fmt_num, fmt_pct
 from src.pipeline import rank_ic
 from src.ui import charts
-from src.ui.common import get_result, metric_cards, require_prices, setup_page, show_notes, sidebar_data, sidebar_strategy
+from src.ui.common import demo_warning, get_result, metric_cards, require_prices, setup_page, show_notes, sidebar_data, sidebar_strategy
 from src.utils import to_csv_bytes
 
 setup_page("模型解釋", "🧠")
@@ -22,6 +22,7 @@ if res is None:
     st.stop()
 
 st.title("🧠 模型解釋")
+demo_warning()
 st.caption(f"模型：{params.model_name}｜預測未來 {params.hold_days} 個交易日的相對報酬｜共訓練 {len(res.train_log)} 次")
 show_notes([n for n in res.notes if "示範" in n])
 

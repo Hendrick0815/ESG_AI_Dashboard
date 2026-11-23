@@ -9,7 +9,7 @@ from src import backtest as bt, config, forecast
 from src.backtest import STRATEGIES
 from src.metrics import format_table, performance_table
 from src.ui import charts
-from src.ui.common import (HOLDINGS_NOTE, get_result, holdings_block, metric_cards, portfolio_labels, require_prices,
+from src.ui.common import (demo_warning, HOLDINGS_NOTE, get_result, holdings_block, metric_cards, portfolio_labels, require_prices,
                            setup_page, show_notes, sidebar_data, sidebar_strategy, stock_info)
 from src.utils import to_csv_bytes
 
@@ -32,6 +32,7 @@ names = ds.names
 labels = portfolio_labels(names)
 
 st.title("📈 策略回測")
+demo_warning()
 st.caption(f"樣本外期間 {res.test_start:%Y-%m-%d} ～ {res.latest_date:%Y-%m-%d}，共 {len(res.rebalance_dates)} 次調倉（每 {config.REBALANCE_WEEKS} 週一次）")
 show_notes(res.notes)
 
@@ -118,7 +119,7 @@ with tab2:
                 fc = forecast.holding_forecast(sub, res.evaluation, res.returns, ds.benchmarks, strat, d,
                                                window, params.hold_days, wide=wide)
                 fcs[strat], fc_info[strat] = fc["path"], fc
-        st.markdown(f"**持有期間**：{d:%Y-%m-%d} 收盤買進 → {end:%Y-%m-%d} 調倉（共 {len(window)} 個交易日"
+        st.markdown(f"**持有期間**：{d:%Y-%m-%d} 收盤後選股、下一交易日開盤買進 → {end:%Y-%m-%d} 調倉（共 {len(window)} 個交易日"
                     + ("，尚未走完" if d == dates[0] and end > pd.Timestamp(res.latest_date) else "") + "）")
         if fc_info:
             any_fc = next(iter(fc_info.values()))
@@ -233,7 +234,7 @@ with tab5:
 #### 三種策略
 1. **單純 AI**：模型預測分數最高的 {params.top_n} 檔。
 2. **AI+ESG**：先排除爭議分數 > 3、EPS 為負的公司，混合分數 = {1 - params.esg_weight:.0%} × AI 排名 ＋ {params.esg_weight:.0%} × ESG 排名。
-3. **單純 ESG**：同樣的排除條件後，ESG 總分最高的 {params.top_n} 檔。
+3. **規則式 ESG 篩選**：同樣的排除條件後，ESG 總分最高的 {params.top_n} 檔。
 
 #### 目標：最高報酬（不限制回撤）
 預設設定以**報酬最大化**為唯一目標，不考慮最大回撤：
@@ -268,7 +269,7 @@ with tab5:
 可減少回檔時的虧損與最大回撤，代價是報酬降低、換倉次數增加；可與上面的風險控制同時使用，取較低的持股比例。
 
 #### 回測規則
-- **每 {config.REBALANCE_WEEKS} 週**調倉一次（從回測起點起算，固定同一個星期幾，遇假日順延），以當天收盤價換股，報酬從**下一個交易日**開始計算。
+- **每 {config.REBALANCE_WEEKS} 週**調倉一次（從回測起點起算，固定同一個星期幾，遇假日順延），調倉日**收盤後**用當天以前的資料形成選股訊號，**下一個交易日開盤**換股：舊持股賺到昨收→今開的隔夜漲跌，新持股從開盤價起算報酬。
 - 持有期間權重隨股價漂移，{params.weighting}配置；未投入的部分為現金（報酬 0）。
 - 交易成本：買進手續費 0.1425%、賣出手續費 0.1425% + 證交稅 0.3%，換股與調整持股比例都會扣。
 - ESG 與估值資料一律依**公告日**對齊：某天只會用到當天以前已公告的資料
