@@ -48,3 +48,4 @@
 2026-11-24 18:23:50,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1088}",auto,2026-11-24,"{'rows': 3296, 'failed': 0}",{'rows': 29},"{'dates_requested': 10, 'rows_downloaded': 8300}",2026-11-24,"{'rows': 37279, 'last': '2026-11-24'}"
 2026-11-25 17:40:50,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1088}",auto,2026-11-25,"{'rows': 2101, 'failed': 0}",{'rows': 28},"{'dates_requested': 10, 'rows_downloaded': 8286}",2026-11-25,"{'rows': 37284, 'last': '2026-11-25'}"
 2026-11-26 17:23:01,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1088}",auto,2026-11-26,"{'rows': 2401, 'failed': 0}",{'rows': 32},"{'dates_requested': 10, 'rows_downloaded': 8223}",2026-11-26,"{'rows': 37286, 'last': '2026-11-26'}"
+2026-11-27 17:02:04,,,,,,"{'dates_requested': 1, 'rows_downloaded': 1088}",auto,2026-11-27,"{'rows': 2701, 'failed': 0}",{'rows': 36},"{'dates_requested': 10, 'rows_downloaded': 8335}",2026-11-27,"{'rows': 37291, 'last': '2026-11-27'}"
